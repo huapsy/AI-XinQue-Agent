@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Database
+*.db
+app/backend/data/
+
+# Environment
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude Code local config
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
