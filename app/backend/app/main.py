@@ -1,8 +1,8 @@
 """心雀后端服务入口"""
 
 import os
+import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
@@ -15,21 +15,33 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.agent import xinque
+from app.admin_metrics_helpers import build_admin_metrics_payload
 from app.alignment import detect_alignment_signal
+from app.encryption_helpers import decrypt_text, encrypt_text, require_encryption_key
+from app.memory_helpers import maybe_store_episodic_memory
 from app.models.database import engine, get_session
-from app.models.tables import Base, Message, Session, User, UserProfile
+from app.models.tables import Base, EpisodicMemory, Intervention, Message, Session, TraceRecord, User, UserProfile
+from app.otel_helpers import export_trace_event
+from app.profile_helpers import build_alliance_patch
+from app.privacy_helpers import redact_sensitive_text
 from app.safety.input_guard import check_input
 from app.safety.output_guard import check_output
+from app.session_helpers import save_session_summary
+from app.trace_helpers import serialize_trace_records
+from app.trace_sink import DatabaseTraceSink
+from app.mood_trend_helpers import build_mood_trend_payload
 
 load_dotenv()
 
 client: AsyncAzureOpenAI | None = None
+TRACE_SINK = DatabaseTraceSink(TraceRecord)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期：初始化 OpenAI 客户端 + 确保数据库表存在"""
     global client
+    require_encryption_key()
     client = AsyncAzureOpenAI(
         azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
         api_key=os.environ["AZURE_OPENAI_API_KEY"],
@@ -122,7 +134,7 @@ async def _load_history(db: AsyncSession, session_id: str) -> list[dict]:
     if session is None:
         return []
     return [
-        {"role": msg.role, "content": msg.content}
+        {"role": msg.role, "content": decrypt_text(msg.content)}
         for msg in session.messages
     ]
 
@@ -142,7 +154,7 @@ async def _generate_summary(db: AsyncSession, session_id: str) -> str:
     dialogue_lines = []
     for m in all_msgs:
         role_label = "用户" if m.role == "user" else "心雀"
-        dialogue_lines.append(f"{role_label}: {m.content}")
+        dialogue_lines.append(f"{role_label}: {decrypt_text(m.content)}")
     dialogue_text = "\n".join(dialogue_lines)
     # 截断到 3000 字，避免 token 浪费
     if len(dialogue_text) > 3000:
@@ -164,13 +176,41 @@ async def _generate_summary(db: AsyncSession, session_id: str) -> str:
                 {"role": "user", "content": dialogue_text},
             ],
         )
-        return response.choices[0].message.content or ""
+        return redact_sensitive_text(response.choices[0].message.content or "", limit=240)
     except Exception as e:
         # LLM 调用失败时降级为简单拼接
         import traceback
         traceback.print_exc()
-        user_msgs = [m.content for m in all_msgs if m.role == "user"]
-        return " / ".join(user_msgs)[:500]
+        user_msgs = [decrypt_text(m.content) for m in all_msgs if m.role == "user"]
+        return redact_sensitive_text(" / ".join(user_msgs), limit=240)
+
+
+async def _store_trace(
+    db: AsyncSession,
+    session_id: str,
+    turn_number: int,
+    input_safety: dict,
+    llm_call: dict,
+    output_safety: dict,
+    total_latency_ms: int,
+) -> None:
+    """写入一条 trace。"""
+    db.add(TRACE_SINK.build_record(
+        session_id=session_id,
+        turn_number=turn_number,
+        input_safety=input_safety,
+        llm_call=llm_call,
+        output_safety=output_safety,
+        total_latency_ms=total_latency_ms,
+    ))
+    export_trace_event("xinque.trace", {
+        "session_id": session_id,
+        "turn_number": turn_number,
+        "input_safety": input_safety,
+        "llm_call": llm_call,
+        "output_safety": output_safety,
+        "total_latency_ms": total_latency_ms,
+    })
 
 
 # ── API 路由 ──────────────────────────────────────────────────
@@ -194,6 +234,7 @@ async def chat(
     db: AsyncSession = Depends(get_session),
 ):
     """接收用户消息，经安全层检测后调用心雀 Agent，返回回复"""
+    request_started = time.perf_counter()
     # 获取或创建用户
     user = await _get_or_create_user(db, request.client_id)
 
@@ -205,13 +246,35 @@ async def chat(
         session_id = session.session_id
 
     # ── 输入安全层（LLM 之前） ──
+    input_started = time.perf_counter()
     guard = check_input(request.message)
+    input_latency_ms = int((time.perf_counter() - input_started) * 1000)
     if guard.blocked:
         # 危机/注入 → 绕过 LLM，直接返回预设响应
         if guard.reason == "crisis" and user.profile:
             user.profile.risk_level = "crisis"
-        db.add(Message(session_id=session_id, role="user", content=request.message))
-        db.add(Message(session_id=session_id, role="assistant", content=guard.response))
+        history = await _load_history(db, session_id)
+        db.add(Message(session_id=session_id, role="user", content=encrypt_text(request.message)))
+        db.add(Message(session_id=session_id, role="assistant", content=encrypt_text(guard.response)))
+        await _store_trace(
+            db=db,
+            session_id=session_id,
+            turn_number=len(history) // 2 + 1,
+            input_safety={"triggered": True, "reason": guard.reason, "latency_ms": input_latency_ms},
+            llm_call={
+                "model": None,
+                "skipped": True,
+                "reason": "input_guard_blocked",
+                "latency_ms": 0,
+                "request_count": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "tool_calls": [],
+            },
+            output_safety={"triggered": False, "reason": None, "latency_ms": 0},
+            total_latency_ms=int((time.perf_counter() - request_started) * 1000),
+        )
         await db.commit()
         return ChatResponse(reply=guard.response, session_id=session_id)
 
@@ -233,20 +296,16 @@ async def chat(
         score_delta, signal_type = detect_alignment_signal(request.message)
         if score_delta != 0:
             alignment_score = max(-10, min(30, alignment_score + score_delta))
-            alliance["alignment_score"] = alignment_score
-            if signal_type:
-                # 记录不对齐历史
-                history_list = alliance.get("misalignment_history", [])
-                history_list.append({
-                    "type": signal_type,
-                    "session_id": session_id,
-                })
-                # 只保留最近 10 条
-                alliance["misalignment_history"] = history_list[-10:]
-            profile.alliance = alliance
+            profile.alliance = build_alliance_patch(
+                existing=alliance,
+                next_score=alignment_score,
+                signal_type=signal_type,
+                session_id=session_id,
+            )
             flag_modified(profile, "alliance")
 
     # 调用心雀 Agent
+    tool_traces: list[dict] = []
     result = await xinque.chat(
         client=client,
         history=history,
@@ -255,18 +314,45 @@ async def chat(
         session_id=session_id,
         db=db,
         alignment_score=alignment_score,
+        trace_collector=tool_traces,
     )
 
     reply_text = result["reply"]
     card_data = result.get("card_data")
+    llm_trace = result.get("llm_trace", {})
 
     # ── 输出安全层（LLM 之后） ──
+    output_started = time.perf_counter()
     output = check_output(reply_text)
+    output_latency_ms = int((time.perf_counter() - output_started) * 1000)
     final_reply = output.output
 
     # 持久化
-    db.add(Message(session_id=session_id, role="user", content=request.message))
-    db.add(Message(session_id=session_id, role="assistant", content=final_reply))
+    db.add(Message(session_id=session_id, role="user", content=encrypt_text(request.message)))
+    db.add(Message(session_id=session_id, role="assistant", content=encrypt_text(final_reply)))
+    await maybe_store_episodic_memory(db, EpisodicMemory, user.user_id, session_id, request.message)
+    await _store_trace(
+        db=db,
+        session_id=session_id,
+        turn_number=len(history) // 2 + 1,
+        input_safety={"triggered": False, "reason": None, "latency_ms": input_latency_ms},
+        llm_call={
+            "model": llm_trace.get("model", os.environ.get("AZURE_OPENAI_DEPLOYMENT", "")),
+            "skipped": False,
+            "request_count": llm_trace.get("request_count", 0),
+            "prompt_tokens": llm_trace.get("prompt_tokens", 0),
+            "completion_tokens": llm_trace.get("completion_tokens", 0),
+            "total_tokens": llm_trace.get("total_tokens", 0),
+            "latency_ms": llm_trace.get("latency_ms", 0),
+            "tool_calls": tool_traces,
+        },
+        output_safety={
+            "triggered": final_reply != reply_text,
+            "reason": output.reason,
+            "latency_ms": output_latency_ms,
+        },
+        total_latency_ms=int((time.perf_counter() - request_started) * 1000),
+    )
     await db.commit()
 
     return ChatResponse(reply=final_reply, session_id=session_id, card_data=card_data)
@@ -278,19 +364,11 @@ async def end_session(
     db: AsyncSession = Depends(get_session),
 ):
     """结束会话，生成摘要"""
-    result = await db.execute(
-        select(Session).where(Session.session_id == session_id)
-    )
-    session = result.scalar_one_or_none()
-    if session is None:
+    payload = await save_session_summary(db, session_id)
+    if payload["status"] == "not_found":
         return {"status": "not_found"}
-
-    if session.ended_at is None:
-        session.ended_at = datetime.now(timezone.utc)
-        session.summary = await _generate_summary(db, session_id)
-        await db.commit()
-
-    return {"status": "ok", "summary": session.summary}
+    await db.commit()
+    return payload
 
 
 @app.get("/api/sessions/{session_id}/messages")
@@ -299,8 +377,23 @@ async def get_messages(
     db: AsyncSession = Depends(get_session),
 ):
     """获取会话的历史消息（前端刷新恢复用）"""
-    history = await _load_history(db, session_id)
-    return {"messages": history}
+    result = await db.execute(
+        select(Session.session_id).where(Session.session_id == session_id)
+    )
+    exists = result.scalar_one_or_none() is not None
+    history = await _load_history(db, session_id) if exists else []
+    return {"exists": exists, "messages": history}
+
+
+@app.get("/api/sessions/{session_id}/traces")
+async def get_session_traces(
+    session_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """获取指定会话的 trace 列表。"""
+    result = await db.execute(TraceRecord.select_by_session(session_id))
+    traces = result.scalars().all()
+    return serialize_trace_records(traces)
 
 
 @app.get("/api/users/{client_id}/sessions")
@@ -329,12 +422,53 @@ async def list_sessions(
                 "session_id": s.session_id,
                 "started_at": s.started_at.isoformat() if s.started_at else None,
                 "ended_at": s.ended_at.isoformat() if s.ended_at else None,
-                "summary_preview": (s.summary[:30] + "…") if s.summary and len(s.summary) > 30 else s.summary,
+                "summary_preview": (
+                    (decrypt_text(s.summary)[:30] + "…")
+                    if decrypt_text(s.summary) and len(decrypt_text(s.summary)) > 30
+                    else decrypt_text(s.summary)
+                ),
                 "opening_mood_score": s.opening_mood_score,
             }
             for s in sessions
         ]
     }
+
+
+@app.get("/api/users/{client_id}/mood-trend")
+async def get_mood_trend(
+    client_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """获取用户情绪签到趋势。"""
+    result = await db.execute(
+        select(User).where(User.client_id == client_id)
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        return build_mood_trend_payload([])
+
+    result = await db.execute(
+        select(Session)
+        .where(Session.user_id == user.user_id)
+        .order_by(Session.started_at)
+    )
+    sessions = result.scalars().all()
+    return build_mood_trend_payload(sessions)
+
+
+@app.get("/api/admin/metrics")
+async def get_admin_metrics(
+    db: AsyncSession = Depends(get_session),
+):
+    """获取匿名汇总指标。"""
+    sessions = (await db.execute(select(Session))).scalars().all()
+    interventions = (await db.execute(select(Intervention))).scalars().all()
+    traces = (await db.execute(select(TraceRecord))).scalars().all()
+    message_rows = (await db.execute(select(Message.session_id))).scalars().all()
+    message_counts: dict[str, int] = {}
+    for session_id in message_rows:
+        message_counts[session_id] = message_counts.get(session_id, 0) + 1
+    return build_admin_metrics_payload(sessions, interventions, traces, message_counts)
 
 
 class MoodRequest(BaseModel):

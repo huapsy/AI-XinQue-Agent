@@ -78,21 +78,21 @@ async def execute(user_id: str, db: AsyncSession) -> str:
 
     profile = user.profile
     context = {
-        "user": {
+        "profile_snapshot": {
             "nickname": (profile.nickname if profile else None) or user.nickname,
             "session_count": profile.session_count if profile else 0,
+            "risk_level": profile.risk_level if profile else "none",
+            "alliance": profile.alliance if profile else None,
+            "preferences": (profile.preferences if profile else None) or {},
+            "clinical_profile": (profile.clinical_profile if profile else None) or {},
         },
-        "last_session": None,
+        "last_session_summary": None,
         "pending_homework": [],
-        "intervention_history": [],
-        "preferences": (profile.preferences if profile else None),
+        "recent_interventions": [],
     }
 
     if last_session:
-        context["last_session"] = {
-            "date": last_session.started_at.strftime("%Y-%m-%d") if last_session.started_at else None,
-            "summary": last_session.summary,
-        }
+        context["last_session_summary"] = last_session.summary
 
     # 未完成作业
     for hw in pending_homeworks:
@@ -106,7 +106,7 @@ async def execute(user_id: str, db: AsyncSession) -> str:
 
     # 最近干预历史
     for iv in recent_interventions:
-        context["intervention_history"].append({
+        context["recent_interventions"].append({
             "skill_name": iv.skill_name,
             "date": iv.started_at.strftime("%Y-%m-%d") if iv.started_at else None,
             "completed": iv.completed,

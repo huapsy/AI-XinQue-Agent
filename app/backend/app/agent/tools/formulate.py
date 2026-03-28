@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.tables import CaseFormulation
+from app.models.tables import CaseFormulation, UserProfile
+from app.profile_helpers import apply_profile_patch, build_clinical_profile_patch_from_formulation
 
 TOOL_DEFINITION = {
     "type": "function",
@@ -234,6 +235,20 @@ async def execute(
     formulation.mechanism = _generate_mechanism(formulation)
     formulation.readiness = _compute_readiness(formulation)
     formulation.updated_at = datetime.now(timezone.utc)
+
+    profile_result = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == user_id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if profile is not None:
+        clinical_patch = build_clinical_profile_patch_from_formulation({
+            "primary_issue": formulation.primary_issue,
+            "context": formulation.context,
+            "emotions": formulation.emotional_state,
+            "cognitive_patterns": formulation.cognitive_patterns,
+            "behavioral_patterns": formulation.behavioral_patterns,
+        })
+        profile.clinical_profile = apply_profile_patch(profile.clinical_profile, clinical_patch)
 
     await db.flush()
 

@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { shouldRestoreSavedSession } from "./sessionRestore";
+import { describeMoodTrend, type MoodTrendPayload } from "./moodTrend";
 
-const API_BASE = "http://localhost:8001";
+const API_BASE = "http://localhost:8000";
 
 // ── 类型定义 ──
 
@@ -23,6 +25,8 @@ interface CardData {
   title: string;
   description?: string;
   steps?: CardStep[];
+  fields?: Array<{ label: string; placeholder?: string }>;
+  items?: Array<{ label: string; checked?: boolean }>;
   rounds?: number;
   resources?: ReferralResource[];
   footer?: string;
@@ -41,6 +45,15 @@ interface SessionItem {
   summary_preview: string | null;
   opening_mood_score: number | null;
 }
+
+const EMPTY_TREND: MoodTrendPayload = {
+  count: 0,
+  average_mood_score: null,
+  latest_mood_score: null,
+  trend_direction: "stable",
+  volatility: 0,
+  points: [],
+};
 
 // ── 工具函数 ──
 
@@ -121,6 +134,47 @@ function ExerciseCard({ card }: { card: CardData }) {
   );
 }
 
+function JournalCard({ card }: { card: CardData }) {
+  return (
+    <div style={{ backgroundColor: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: "12px", padding: "16px", marginTop: "8px" }}>
+      <div style={{ fontSize: "15px", fontWeight: 600, color: "#0f172a", marginBottom: "8px" }}>{card.title}</div>
+      {card.description && <div style={{ fontSize: "13px", color: "#475569", marginBottom: "12px" }}>{card.description}</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {card.fields?.map((field, index) => (
+          <div key={`${field.label}-${index}`} style={{ borderRadius: "10px", padding: "10px 12px", backgroundColor: "#fff", border: "1px dashed #cbd5e1" }}>
+            <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>{field.label}</div>
+            <div style={{ fontSize: "13px", color: "#94a3b8" }}>{field.placeholder || "在这里写下你的内容"}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChecklistCard({ card }: { card: CardData }) {
+  return (
+    <div style={{ backgroundColor: "#fefce8", border: "1px solid #fde68a", borderRadius: "12px", padding: "16px", marginTop: "8px" }}>
+      <div style={{ fontSize: "15px", fontWeight: 600, color: "#854d0e", marginBottom: "8px" }}>{card.title}</div>
+      {card.description && <div style={{ fontSize: "13px", color: "#a16207", marginBottom: "12px" }}>{card.description}</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        {card.items?.map((item, index) => (
+          <div key={`${item.label}-${index}`} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#713f12" }}>
+            <span style={{ width: "18px", height: "18px", borderRadius: "6px", border: "1px solid #f59e0b", backgroundColor: item.checked ? "#f59e0b" : "#fff7ed" }} />
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CardRenderer({ card }: { card: CardData }) {
+  if (card.type === "referral") return <ReferralCard card={card} />;
+  if (card.type === "journal") return <JournalCard card={card} />;
+  if (card.type === "checklist") return <ChecklistCard card={card} />;
+  return <ExerciseCard card={card} />;
+}
+
 // ── 情绪签到组件 ──
 
 function MoodCheckin({ onSelect }: { onSelect: (score: number) => void }) {
@@ -155,6 +209,7 @@ export default function ChatWindow() {
   const [viewingHistory, setViewingHistory] = useState(false);
   const [showMoodCheckin, setShowMoodCheckin] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [moodTrend, setMoodTrend] = useState<MoodTrendPayload>(EMPTY_TREND);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const clientId = useRef(getClientId());
 
@@ -171,7 +226,27 @@ export default function ChatWindow() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { loadSessionList(); }, [loadSessionList]);
+  const loadMoodTrend = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/users/${clientId.current}/mood-trend`);
+      const data = await res.json();
+      setMoodTrend({
+        count: data.count || 0,
+        average_mood_score: data.average_mood_score ?? null,
+        latest_mood_score: data.latest_mood_score ?? null,
+        trend_direction: data.trend_direction ?? "stable",
+        volatility: data.volatility ?? 0,
+        points: data.points || [],
+      });
+    } catch {
+      setMoodTrend(EMPTY_TREND);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSessionList();
+    loadMoodTrend();
+  }, [loadSessionList, loadMoodTrend]);
 
   // 页面关闭时结束会话
   useEffect(() => {
@@ -185,21 +260,39 @@ export default function ChatWindow() {
     return () => window.removeEventListener("beforeunload", handleUnload);
   }, []);
 
-  // 恢复会话历史
+  // 初始化：恢复会话 或 创建新会话
   useEffect(() => {
-    if (!sessionId) return;
-    fetch(`${API_BASE}/api/sessions/${sessionId}/messages`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.messages?.length) {
-          setMessages(data.messages);
-        }
-      })
-      .catch(() => {
-        localStorage.removeItem("xinque_session_id");
-        setSessionId(null);
-      });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const init = async () => {
+      const savedSid = localStorage.getItem("xinque_session_id");
+      if (savedSid) {
+        // 尝试恢复已有会话
+        try {
+          const res = await fetch(`${API_BASE}/api/sessions/${savedSid}/messages`);
+          const data = await res.json();
+          if (shouldRestoreSavedSession(data)) {
+            setSessionId(savedSid);
+            setMessages(data.messages);
+            return; // 恢复成功
+          }
+        } catch { /* fall through to create new */ }
+      }
+      // 没有会话 或 恢复失败 → 创建新会话 + 弹情绪签到
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ client_id: clientId.current }),
+        });
+        const data = await res.json();
+        setSessionId(data.session_id);
+        localStorage.setItem("xinque_session_id", data.session_id);
+        setShowMoodCheckin(true);
+        loadSessionList();
+        loadMoodTrend();
+      } catch { /* ignore */ }
+    };
+    init();
+  }, [loadMoodTrend, loadSessionList]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -263,8 +356,9 @@ export default function ChatWindow() {
       setViewingHistory(false);
       setShowMoodCheckin(true);
       loadSessionList();
+      loadMoodTrend();
     } catch { /* ignore */ }
-  }, [sessionId, endCurrentSession, loadSessionList]);
+  }, [sessionId, endCurrentSession, loadMoodTrend, loadSessionList]);
 
   const viewSession = useCallback(async (sid: string) => {
     try {
@@ -290,9 +384,11 @@ export default function ChatWindow() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mood_score: score }),
         });
+        loadMoodTrend();
+        loadSessionList();
       } catch { /* ignore */ }
     }
-  }, [sessionId]);
+  }, [sessionId, loadMoodTrend, loadSessionList]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -300,8 +396,6 @@ export default function ChatWindow() {
       sendMessage();
     }
   };
-
-  const currentSessionItem = sessionList.find((s) => s.session_id === sessionId);
 
   return (
     <div style={S.root}>
@@ -313,6 +407,37 @@ export default function ChatWindow() {
             <button style={S.sidebarClose} onClick={() => setSidebarOpen(false)}>✕</button>
           </div>
           <button style={S.newChatSidebar} onClick={newSession}>+ 新对话</button>
+          <div style={S.trendCard}>
+            <div style={S.trendTitle}>情绪趋势</div>
+            <div style={S.trendStats}>
+              <div>
+                <div style={S.trendStatValue}>
+                  {moodTrend.average_mood_score?.toFixed(1) ?? "--"}
+                </div>
+                <div style={S.trendStatLabel}>平均分</div>
+              </div>
+              <div>
+                <div style={S.trendStatValue}>{moodTrend.count}</div>
+                <div style={S.trendStatLabel}>已签到</div>
+              </div>
+              <div>
+                <div style={S.trendStatValue}>
+                  {moodTrend.latest_mood_score ?? "--"}
+                </div>
+                <div style={S.trendStatLabel}>最近一次</div>
+              </div>
+            </div>
+            <div style={S.trendChart}>
+              {moodTrend.points.length ? moodTrend.points.map((point) => (
+                <div key={point.session_id} style={S.trendBarWrap} title={`${point.date || ""} ${point.score}分`}>
+                  <div style={{ ...S.trendBar, height: `${point.score * 16}px` }} />
+                </div>
+              )) : (
+                <div style={S.trendEmpty}>还没有足够的数据</div>
+              )}
+            </div>
+            <div style={S.trendHint}>{describeMoodTrend(moodTrend)}</div>
+          </div>
           <div style={S.sessionList}>
             {sessionList.map((s) => (
               <div
@@ -347,6 +472,7 @@ export default function ChatWindow() {
           )}
           <span>心雀</span>
           {viewingHistory && <span style={S.historyBadge}>查看历史</span>}
+          <a href="#admin" style={S.adminLink}>统计</a>
           <button style={S.newChatButton} onClick={newSession}>新对话</button>
         </div>
 
@@ -363,11 +489,7 @@ export default function ChatWindow() {
                 }}
               >
                 {msg.content}
-                {msg.role === "assistant" && msg.card_data && (
-                  msg.card_data.type === "referral"
-                    ? <ReferralCard card={msg.card_data} />
-                    : <ExerciseCard card={msg.card_data} />
-                )}
+                {msg.role === "assistant" && msg.card_data && <CardRenderer card={msg.card_data} />}
               </div>
             </div>
           ))}
@@ -450,6 +572,64 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: "13px",
     cursor: "pointer",
     fontWeight: 500,
+  },
+  trendCard: {
+    margin: "0 12px 12px",
+    padding: "12px",
+    borderRadius: "14px",
+    background: "linear-gradient(180deg, #fff7ed 0%, #ffffff 100%)",
+    border: "1px solid #fed7aa",
+    boxShadow: "0 8px 18px rgba(251, 146, 60, 0.08)",
+  },
+  trendTitle: {
+    fontSize: "13px",
+    fontWeight: 700,
+    color: "#9a3412",
+    marginBottom: "10px",
+  },
+  trendStats: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "8px",
+    marginBottom: "12px",
+  },
+  trendStatValue: {
+    fontSize: "18px",
+    fontWeight: 700,
+    color: "#7c2d12",
+  },
+  trendStatLabel: {
+    fontSize: "11px",
+    color: "#9a3412",
+  },
+  trendChart: {
+    height: "92px",
+    display: "flex",
+    alignItems: "flex-end",
+    gap: "6px",
+    marginBottom: "10px",
+  },
+  trendBarWrap: {
+    flex: 1,
+    minWidth: 0,
+    height: "100%",
+    display: "flex",
+    alignItems: "flex-end",
+  },
+  trendBar: {
+    width: "100%",
+    borderRadius: "999px",
+    background: "linear-gradient(180deg, #fb923c 0%, #ea580c 100%)",
+  },
+  trendEmpty: {
+    fontSize: "12px",
+    color: "#9a3412",
+    alignSelf: "center",
+  },
+  trendHint: {
+    fontSize: "12px",
+    lineHeight: 1.5,
+    color: "#7c2d12",
   },
   sessionList: {
     flex: 1,
@@ -542,6 +722,18 @@ const S: Record<string, React.CSSProperties> = {
     color: "#374151",
     fontSize: "13px",
     cursor: "pointer",
+    fontWeight: 500,
+  },
+  adminLink: {
+    position: "absolute",
+    right: 88,
+    padding: "6px 12px",
+    borderRadius: "16px",
+    border: "1px solid #d1d5db",
+    backgroundColor: "#fff",
+    color: "#2563eb",
+    fontSize: "13px",
+    textDecoration: "none",
     fontWeight: 500,
   },
   // 情绪签到

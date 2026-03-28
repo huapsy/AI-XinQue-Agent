@@ -41,6 +41,7 @@ class UserProfile(Base):
     risk_level: Mapped[str] = mapped_column(Text, default="none")  # none|low|medium|high|crisis
     alliance: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {alignment_score, misalignment_history}
     preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    clinical_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     user: Mapped["User"] = relationship(back_populates="profile")
@@ -108,3 +109,43 @@ class Intervention(Base):
     key_insight: Mapped[str | None] = mapped_column(Text, nullable=True)
     homework_assigned: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     homework_completed: Mapped[bool] = mapped_column(default=False)
+
+
+class EpisodicMemory(Base):
+    __tablename__ = "episodic_memories"
+
+    memory_id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(Text, ForeignKey("users.user_id"))
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("sessions.session_id"))
+    content: Mapped[str] = mapped_column(Text)
+    topic: Mapped[str | None] = mapped_column(Text, nullable=True)
+    emotions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    @classmethod
+    def select_by_user(cls, user_id: str):
+        """按用户查询情景记忆。"""
+        from sqlalchemy import select
+
+        return select(cls).where(cls.user_id == user_id)
+
+
+class TraceRecord(Base):
+    __tablename__ = "traces"
+
+    trace_id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("sessions.session_id"))
+    turn_number: Mapped[int] = mapped_column(Integer, default=1)
+    input_safety: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    llm_call: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    output_safety: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    total_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    @classmethod
+    def select_by_session(cls, session_id: str):
+        """按会话查询 trace。"""
+        from sqlalchemy import select
+
+        return select(cls).where(cls.session_id == session_id).order_by(cls.turn_number)

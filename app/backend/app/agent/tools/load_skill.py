@@ -66,6 +66,45 @@ def _parse_card_data(content: str) -> dict | None:
         return None
 
 
+def _build_render_payload(frontmatter: dict, skill_name: str, card_data: dict | None) -> dict | None:
+    """根据 Skill frontmatter 推断 render_card 输入。"""
+    if not card_data:
+        return None
+
+    card_template = frontmatter.get("card_template")
+    title = card_data.get("title") or frontmatter.get("display_name")
+    description = card_data.get("description")
+
+    if card_template == "journal":
+        field_map = {
+            "thought_record": ["触发情境", "自动思维", "情绪强度", "支持证据", "反对证据", "替代想法"],
+            "gratitude_journal": ["今天值得感恩的事 1", "今天值得感恩的事 2", "今天值得感恩的事 3"],
+        }
+        return {
+            "card_type": "journal",
+            "title": title,
+            "description": description,
+            "fields": field_map.get(skill_name, ["记录 1", "记录 2", "记录 3"]),
+        }
+
+    if card_template == "checklist":
+        return {
+            "card_type": "checklist",
+            "title": title,
+            "description": description,
+            "items": [step.get("instruction", "") for step in card_data.get("steps", [])],
+        }
+
+    return {
+        "card_type": card_data.get("type", "guided_exercise"),
+        "title": title,
+        "description": description,
+        "steps": card_data.get("steps", []),
+        "resources": card_data.get("resources", []),
+        "footer": card_data.get("footer"),
+    }
+
+
 async def execute(arguments: dict) -> str:
     """执行 load_skill，返回 Skill 完整内容"""
     skill_name = arguments.get("skill_name", "")
@@ -99,5 +138,6 @@ async def execute(arguments: dict) -> str:
 
     if card_data:
         result["card_data"] = card_data
+        result["render_payload"] = _build_render_payload(frontmatter, skill_name, card_data)
 
     return json.dumps(result, ensure_ascii=False)
