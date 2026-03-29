@@ -1,5 +1,6 @@
 ---
 name: thought_record
+version: 2.0
 display_name: 想法记录
 category: cbt
 trigger: 用户存在多个自动化思维，需要系统性地记录和检验想法
@@ -9,6 +10,14 @@ estimated_turns: 5-7
 estimated_duration: 8-12min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 48
+follow_up_rules:
+  - 下次优先询问用户是否真正写过记录，而不是直接重复展示卡片
+  - 若用户只记录了情境但没有替代想法，优先补证据与平衡想法
+completion_signals:
+  - 我已经写下来了
+  - 我记了一条想法记录
+  - 我试着填了那张记录卡
 ---
 
 ## 目标

@@ -14,47 +14,45 @@ from app.profile_helpers import apply_profile_patch, build_alliance_patch, build
 
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "record_outcome",
-        "description": (
-            "干预完成后调用，记录干预结果。"
-            "包括是否完成、用户反馈、关键洞察、布置的作业等。"
-            "在询问用户感受之后调用。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "skill_name": {
-                    "type": "string",
-                    "description": "执行的 Skill 名称",
-                },
-                "completed": {
-                    "type": "boolean",
-                    "description": "用户是否完成了干预练习",
-                },
-                "user_feedback": {
-                    "type": "string",
-                    "description": "用户反馈：helpful / neutral / unhelpful",
-                },
-                "key_insight": {
-                    "type": "string",
-                    "description": "用户在干预中的关键洞察或发现",
-                },
-                "target_issue": {
-                    "type": "string",
-                    "description": "干预针对的问题",
-                },
-                "homework_description": {
-                    "type": "string",
-                    "description": "布置的作业描述（如有）",
-                },
-                "homework_frequency": {
-                    "type": "string",
-                    "description": "作业频率（如有），如'每天一次'、'本周遇到时'",
-                },
+    "name": "record_outcome",
+    "description": (
+        "干预完成后调用，记录干预结果。"
+        "包括是否完成、用户反馈、关键洞察、布置的作业等。"
+        "在询问用户感受之后调用。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "skill_name": {
+                "type": "string",
+                "description": "执行的 Skill 名称",
             },
-            "required": ["skill_name", "completed"],
+            "completed": {
+                "type": "boolean",
+                "description": "用户是否完成了干预练习",
+            },
+            "user_feedback": {
+                "type": "string",
+                "description": "用户反馈：helpful / neutral / unhelpful",
+            },
+            "key_insight": {
+                "type": "string",
+                "description": "用户在干预中的关键洞察或发现",
+            },
+            "target_issue": {
+                "type": "string",
+                "description": "干预针对的问题",
+            },
+            "homework_description": {
+                "type": "string",
+                "description": "布置的作业描述（如有）",
+            },
+            "homework_frequency": {
+                "type": "string",
+                "description": "作业频率（如有），如'每天一次'、'本周遇到时'",
+            },
         },
+        "required": ["skill_name", "completed"],
     },
 }
 

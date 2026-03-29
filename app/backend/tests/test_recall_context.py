@@ -2,6 +2,7 @@ import json
 import pathlib
 import sys
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -52,14 +53,22 @@ class RecallContextTests(unittest.TestCase):
         raw = __import__("asyncio").run(recall_context.execute("user-1", db))
         payload = json.loads(raw)
 
+        self.assertIn("runtime_time_context", payload)
         self.assertIn("profile_snapshot", payload)
         self.assertIn("last_session_summary", payload)
         self.assertIn("pending_homework", payload)
         self.assertIn("recent_interventions", payload)
+        self.assertIn("retrieval_guidance", payload)
+        self.assertIn("current_time_iso", payload["runtime_time_context"])
+        self.assertIn("timezone", payload["runtime_time_context"])
         self.assertEqual(payload["profile_snapshot"]["nickname"], "阿明")
         self.assertEqual(payload["profile_snapshot"]["preferences"]["communication_style"], "direct")
         self.assertEqual(payload["last_session_summary"], "上次聊了工作压力和回避反馈。")
         self.assertEqual(payload["pending_homework"][0]["skill_name"], "breathing_478")
+        self.assertIn("relative_time", payload["pending_homework"][0])
+        self.assertIn("relative_time", payload["recent_interventions"][0])
+        self.assertIn("stable background", payload["retrieval_guidance"]["recall_context_role"])
+        self.assertIn("specific past events", payload["retrieval_guidance"]["search_memory_role"])
 
 
 if __name__ == "__main__":

@@ -93,6 +93,11 @@ def is_duplicate_memory(candidate: dict, existing_memories: list[dict], threshol
 
 def rank_memories_by_query(query: str, memories: list[dict]) -> list[dict]:
     """按 query 相似度对 memories 排序。"""
+    return [memory for memory, _score in score_memories_by_query(query, memories) if _score >= 0.18]
+
+
+def score_memories_by_query(query: str, memories: list[dict]) -> list[tuple[dict, float]]:
+    """计算 query 与 memories 的相似度分数。"""
     query_embedding = embed_text(query)
     query_tokens = _tokenize(query)
 
@@ -114,8 +119,7 @@ def rank_memories_by_query(query: str, memories: list[dict]) -> list[dict]:
         return semantic_score * 0.6 + lexical_score * 0.4
 
     scored = [(memory, score(memory)) for memory in memories]
-    ranked = sorted(scored, key=lambda item: item[1], reverse=True)
-    return [memory for memory, value in ranked if value >= 0.18]
+    return sorted(scored, key=lambda item: item[1], reverse=True)
 
 
 async def maybe_store_episodic_memory(

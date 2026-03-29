@@ -8,30 +8,28 @@ import json
 
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "referral",
-        "description": (
-            "当你判断用户的问题超出心雀的能力范围、"
-            "或用户主动要求找真人咨询师时调用。"
-            "返回结构化的转介卡片数据，前端会渲染为卡片展示给用户。"
-            "urgency 参数：'normal' 表示用户主动要求找咨询师（只显示预约入口），"
-            "'crisis' 表示检测到危机风险（显示全部热线）。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "reason": {
-                    "type": "string",
-                    "description": "转介原因，如'用户主动要求'、'问题超出心雀能力'",
-                },
-                "urgency": {
-                    "type": "string",
-                    "description": "紧急程度：normal（普通转介）或 crisis（危机转介）",
-                    "enum": ["normal", "crisis"],
-                },
+    "name": "referral",
+    "description": (
+        "当你判断用户的问题超出心雀的能力范围、"
+        "或用户主动要求找真人咨询师时调用。"
+        "返回结构化的转介卡片数据，前端会渲染为卡片展示给用户。"
+        "urgency 参数：'normal' 表示用户主动要求找咨询师（只显示预约入口），"
+        "'crisis' 表示检测到危机风险（显示全部热线）。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reason": {
+                "type": "string",
+                "description": "转介原因，如'用户主动要求'、'问题超出心雀能力'",
             },
-            "required": ["urgency"],
+            "urgency": {
+                "type": "string",
+                "description": "紧急程度：normal（普通转介）或 crisis（危机转介）",
+                "enum": ["normal", "crisis"],
+            },
         },
+        "required": ["urgency"],
     },
 }
 

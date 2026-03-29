@@ -45,6 +45,21 @@ def serialize_trace_records(records: list) -> dict:
     }
 
 
+def serialize_phase_timeline(records: list) -> dict:
+    """将 trace 中的 phase timeline 扁平化为会话级读取结构。"""
+    return {
+        "timeline": [
+            {
+                "turn_number": record.turn_number,
+                "created_at": record.created_at.isoformat() if getattr(record, "created_at", None) else None,
+                "phases": [item.get("phase") for item in ((getattr(record, "llm_call", {}) or {}).get("phase_timeline") or [])],
+                "phase_timeline": ((getattr(record, "llm_call", {}) or {}).get("phase_timeline") or []),
+            }
+            for record in records
+        ]
+    }
+
+
 def create_trace_record(
     trace_model,
     session_id: str,

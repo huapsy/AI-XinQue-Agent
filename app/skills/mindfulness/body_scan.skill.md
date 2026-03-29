@@ -1,5 +1,6 @@
 ---
 name: body_scan
+version: 2.0
 display_name: 身体扫描
 category: mindfulness
 trigger: 用户身体紧张、失眠、焦虑躯体化（胸闷、肩膀紧、胃不舒服），需要放松
@@ -9,6 +10,14 @@ estimated_turns: 3-4
 estimated_duration: 5-8min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 24
+follow_up_rules:
+  - 下次优先询问用户哪个身体部位最明显放松或仍然紧绷
+  - 若练习中更焦虑，后续优先改用更短、更外向的接地方式
+completion_signals:
+  - 我刚做完身体扫描
+  - 肩膀好像松一点了
+  - 身体有点不一样
 ---
 
 ## 目标

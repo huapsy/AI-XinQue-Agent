@@ -17,6 +17,13 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.agent import xinque
 from app.admin_metrics_helpers import build_admin_metrics_payload
 from app.alignment import detect_alignment_signal
+from app.chat_service import (
+    create_session_for_user,
+    get_or_create_user,
+    load_history_messages,
+    load_previous_response_id,
+    load_previous_session_state,
+)
 from app.encryption_helpers import decrypt_text, encrypt_text, require_encryption_key
 from app.memory_helpers import maybe_store_episodic_memory
 from app.models.database import engine, get_session
@@ -24,10 +31,19 @@ from app.models.tables import Base, EpisodicMemory, Intervention, Message, Sessi
 from app.otel_helpers import export_trace_event
 from app.profile_helpers import build_alliance_patch
 from app.privacy_helpers import redact_sensitive_text
+from app.responses_helpers import build_text_format_json_schema, extract_response_message_text, extract_structured_output
 from app.safety.input_guard import check_input
+from app.schema_compat import ensure_sqlite_compat_schema
+from app.settings import get_cors_origins
 from app.safety.output_guard import check_output
 from app.session_helpers import save_session_summary
-from app.trace_helpers import serialize_trace_records
+from app.session_state_store import (
+    load_session_state,
+    load_session_state_history,
+    load_session_state_with_meta,
+    save_session_state_with_history,
+)
+from app.trace_helpers import serialize_phase_timeline, serialize_trace_records
 from app.trace_sink import DatabaseTraceSink
 from app.mood_trend_helpers import build_mood_trend_payload
 
@@ -49,6 +65,7 @@ async def lifespan(app: FastAPI):
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(ensure_sqlite_compat_schema)
     yield
     await client.close()
 
@@ -57,7 +74,7 @@ app = FastAPI(title="心雀 API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -91,54 +108,6 @@ class ChatResponse(BaseModel):
 # ── 辅助函数 ──────────────────────────────────────────────────
 
 
-async def _get_or_create_user(db: AsyncSession, client_id: str) -> User:
-    """根据 client_id 查找用户，不存在则创建（含画像）"""
-    result = await db.execute(
-        select(User).where(User.client_id == client_id).options(selectinload(User.profile))
-    )
-    user = result.scalar_one_or_none()
-    if user is None:
-        user = User(client_id=client_id)
-        db.add(user)
-        await db.flush()
-        profile = UserProfile(user_id=user.user_id)
-        db.add(profile)
-        await db.flush()
-        user.profile = profile
-    return user
-
-
-async def _create_session(db: AsyncSession, user_id: str) -> Session:
-    """创建新会话，并更新画像的 session_count"""
-    session = Session(user_id=user_id)
-    db.add(session)
-    # 更新 session_count
-    result = await db.execute(
-        select(UserProfile).where(UserProfile.user_id == user_id)
-    )
-    profile = result.scalar_one_or_none()
-    if profile:
-        profile.session_count += 1
-    await db.flush()
-    return session
-
-
-async def _load_history(db: AsyncSession, session_id: str) -> list[dict]:
-    """从数据库加载会话的历史消息"""
-    result = await db.execute(
-        select(Session)
-        .where(Session.session_id == session_id)
-        .options(selectinload(Session.messages))
-    )
-    session = result.scalar_one_or_none()
-    if session is None:
-        return []
-    return [
-        {"role": msg.role, "content": decrypt_text(msg.content)}
-        for msg in session.messages
-    ]
-
-
 async def _generate_summary(db: AsyncSession, session_id: str) -> str:
     """调用 LLM 生成结构化会话摘要"""
     result = await db.execute(
@@ -160,27 +129,43 @@ async def _generate_summary(db: AsyncSession, session_id: str) -> str:
     if len(dialogue_text) > 3000:
         dialogue_text = dialogue_text[:3000] + "\n..."
 
+    summary_schema = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "themes": {"type": "array", "items": {"type": "string"}},
+            "interventions": {"type": "array", "items": {"type": "string"}},
+            "follow_up": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["summary", "themes", "interventions", "follow_up"],
+        "additionalProperties": False,
+    }
+
     try:
-        response = await client.chat.completions.create(
+        response = await client.responses.create(
             model=os.environ["AZURE_OPENAI_DEPLOYMENT"],
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "你是一个会话摘要助手。请用简洁的中文总结以下心理咨询对话，"
-                        "包含：1）本次讨论的主题 2）用户的核心困扰 "
-                        "3）做了什么干预及效果 4）布置了什么作业。"
-                        "摘要控制在 200 字以内，用自然语言，不用 JSON。"
-                    ),
-                },
-                {"role": "user", "content": dialogue_text},
-            ],
+            instructions=(
+                "你是一个会话摘要助手。请生成结构化摘要，"
+                "summary 为不超过 200 字的中文自然语言摘要；"
+                "themes 为本次主题列表；interventions 为本次使用的方法或练习；"
+                "follow_up 为下次应跟进的事项。"
+            ),
+            input=dialogue_text,
+            text=build_text_format_json_schema("session_summary", summary_schema),
         )
-        return redact_sensitive_text(response.choices[0].message.content or "", limit=240)
+        structured = extract_structured_output(response)
+        if isinstance(structured, dict) and structured.get("summary"):
+            return redact_sensitive_text(str(structured["summary"]), limit=240)
+
+        summary_text, _phase = extract_response_message_text(response)
+        if summary_text:
+            return redact_sensitive_text(summary_text, limit=240)
+        raise ValueError("missing_structured_summary")
     except Exception as e:
         # LLM 调用失败时降级为简单拼接
-        import traceback
-        traceback.print_exc()
+        if not isinstance(e, ValueError):
+            import traceback
+            traceback.print_exc()
         user_msgs = [decrypt_text(m.content) for m in all_msgs if m.role == "user"]
         return redact_sensitive_text(" / ".join(user_msgs), limit=240)
 
@@ -222,8 +207,8 @@ async def create_session(
     db: AsyncSession = Depends(get_session),
 ):
     """创建新会话"""
-    user = await _get_or_create_user(db, request.client_id)
-    session = await _create_session(db, user.user_id)
+    user = await get_or_create_user(db, request.client_id)
+    session = await create_session_for_user(db, user.user_id)
     await db.commit()
     return CreateSessionResponse(session_id=session.session_id, user_id=user.user_id)
 
@@ -236,13 +221,13 @@ async def chat(
     """接收用户消息，经安全层检测后调用心雀 Agent，返回回复"""
     request_started = time.perf_counter()
     # 获取或创建用户
-    user = await _get_or_create_user(db, request.client_id)
+    user = await get_or_create_user(db, request.client_id)
 
     # 获取或创建会话
     if request.session_id:
         session_id = request.session_id
     else:
-        session = await _create_session(db, user.user_id)
+        session = await create_session_for_user(db, user.user_id)
         session_id = session.session_id
 
     # ── 输入安全层（LLM 之前） ──
@@ -253,7 +238,7 @@ async def chat(
         # 危机/注入 → 绕过 LLM，直接返回预设响应
         if guard.reason == "crisis" and user.profile:
             user.profile.risk_level = "crisis"
-        history = await _load_history(db, session_id)
+        history = await load_history_messages(db, session_id)
         db.add(Message(session_id=session_id, role="user", content=encrypt_text(request.message)))
         db.add(Message(session_id=session_id, role="assistant", content=encrypt_text(guard.response)))
         await _store_trace(
@@ -279,7 +264,9 @@ async def chat(
         return ChatResponse(reply=guard.response, session_id=session_id)
 
     # 加载历史消息
-    history = await _load_history(db, session_id)
+    history = await load_history_messages(db, session_id)
+    previous_response_id = await load_previous_response_id(db, session_id)
+    previous_session_state = await load_previous_session_state(db, session_id)
 
     # ── 对齐分数追踪（LLM 之前） ──
     alignment_score = None
@@ -315,6 +302,8 @@ async def chat(
         db=db,
         alignment_score=alignment_score,
         trace_collector=tool_traces,
+        previous_response_id=previous_response_id,
+        persisted_session_state=previous_session_state,
     )
 
     reply_text = result["reply"]
@@ -331,6 +320,11 @@ async def chat(
     db.add(Message(session_id=session_id, role="user", content=encrypt_text(request.message)))
     db.add(Message(session_id=session_id, role="assistant", content=encrypt_text(final_reply)))
     await maybe_store_episodic_memory(db, EpisodicMemory, user.user_id, session_id, request.message)
+    await save_session_state_with_history(
+        db=db,
+        session_id=session_id,
+        payload=llm_trace.get("persisted_session_state") or {},
+    )
     await _store_trace(
         db=db,
         session_id=session_id,
@@ -338,12 +332,17 @@ async def chat(
         input_safety={"triggered": False, "reason": None, "latency_ms": input_latency_ms},
         llm_call={
             "model": llm_trace.get("model", os.environ.get("AZURE_OPENAI_DEPLOYMENT", "")),
+            "endpoint": llm_trace.get("endpoint", "responses"),
             "skipped": False,
             "request_count": llm_trace.get("request_count", 0),
             "prompt_tokens": llm_trace.get("prompt_tokens", 0),
             "completion_tokens": llm_trace.get("completion_tokens", 0),
             "total_tokens": llm_trace.get("total_tokens", 0),
             "latency_ms": llm_trace.get("latency_ms", 0),
+            "final_phase": llm_trace.get("final_phase"),
+            "response_ids": llm_trace.get("response_ids", []),
+            "phase_timeline": llm_trace.get("phase_timeline", []),
+            "persisted_session_state": llm_trace.get("persisted_session_state"),
             "tool_calls": tool_traces,
         },
         output_safety={
@@ -381,7 +380,7 @@ async def get_messages(
         select(Session.session_id).where(Session.session_id == session_id)
     )
     exists = result.scalar_one_or_none() is not None
-    history = await _load_history(db, session_id) if exists else []
+    history = await load_history_messages(db, session_id) if exists else []
     return {"exists": exists, "messages": history}
 
 
@@ -394,6 +393,36 @@ async def get_session_traces(
     result = await db.execute(TraceRecord.select_by_session(session_id))
     traces = result.scalars().all()
     return serialize_trace_records(traces)
+
+
+@app.get("/api/sessions/{session_id}/state")
+async def get_session_state(
+    session_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """读取当前会话状态。"""
+    payload = await load_session_state_with_meta(db, session_id)
+    return {"state": payload}
+
+
+@app.get("/api/sessions/{session_id}/state-history")
+async def get_session_state_history(
+    session_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """读取会话状态历史。"""
+    return await load_session_state_history(db, session_id)
+
+
+@app.get("/api/sessions/{session_id}/timeline")
+async def get_session_timeline(
+    session_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """读取会话 phase timeline。"""
+    result = await db.execute(TraceRecord.select_by_session(session_id))
+    traces = result.scalars().all()
+    return serialize_phase_timeline(traces)
 
 
 @app.get("/api/users/{client_id}/sessions")

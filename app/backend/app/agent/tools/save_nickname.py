@@ -12,22 +12,20 @@ from app.models.tables import UserProfile
 
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "save_nickname",
-        "description": (
-            "当用户告诉你他/她的称呼（昵称）时调用此工具保存。"
-            "这样下次会话时 recall_context 能返回用户的昵称。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "nickname": {
-                    "type": "string",
-                    "description": "用户希望被称呼的名字",
-                },
+    "name": "save_nickname",
+    "description": (
+        "当用户告诉你他/她的称呼（昵称）时调用此工具保存。"
+        "这样下次会话时 recall_context 能返回用户的昵称。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "nickname": {
+                "type": "string",
+                "description": "用户希望被称呼的名字",
             },
-            "required": ["nickname"],
         },
+        "required": ["nickname"],
     },
 }
 

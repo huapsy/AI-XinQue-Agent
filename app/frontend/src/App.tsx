@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import ChatWindow from "./components/chat/ChatWindow";
-import AdminDashboard from "./components/admin/AdminDashboard";
+import { parseHashRoute } from "./navigation";
+import AdminPage from "./pages/AdminPage";
+import ChatPage from "./pages/ChatPage";
+import HistoryPage from "./pages/HistoryPage";
 
 function App() {
   const [hash, setHash] = useState(window.location.hash);
@@ -11,10 +13,21 @@ function App() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  if (hash === "#admin") {
-    return <AdminDashboard />;
+  const parsed = parseHashRoute(hash);
+
+  if (parsed.route === "admin") {
+    return <AdminPage />;
   }
-  return <ChatWindow />;
+  if (parsed.route === "history") {
+    return <HistoryPage />;
+  }
+  return (
+    <ChatPage
+      key={hash}
+      sessionId={parsed.params.get("session")}
+      historyMode={parsed.params.get("history") === "1"}
+    />
+  );
 }
 
 export default App;

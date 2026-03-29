@@ -1,5 +1,6 @@
 ---
 name: cognitive_restructuring
+version: 2.0
 display_name: 认知重构
 category: cbt
 trigger: 用户存在明显的认知扭曲（灾难化思维、非黑即白、消极过滤等）
@@ -9,6 +10,14 @@ estimated_turns: 5-8
 estimated_duration: 10-15min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 48
+follow_up_rules:
+  - 24 小时内优先跟进用户是否在真实情境中尝试用证据检验想法
+  - 若用户反馈知道不合理但仍停不下来，后续优先考虑 thought_record 或 defusion
+completion_signals:
+  - 我刚试着换个角度看
+  - 这样想好像没那么绝对了
+  - 我感觉稍微松一点
 ---
 
 ## 目标

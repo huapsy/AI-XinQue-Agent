@@ -11,35 +11,40 @@ from openai import AsyncAzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.system_prompt import build_system_prompt
-from app.agent.tools import (
-    formulate,
-    load_skill,
-    match_intervention,
-    recall_context,
-    render_card,
-    record_outcome,
-    referral,
-    save_session,
-    search_memory,
-    save_nickname,
-    update_profile,
+from app.models.tables import Intervention
+from app.responses_helpers import (
+    extract_response_function_calls,
+    extract_response_message_text,
+    get_usage_counts,
 )
-from app.trace_helpers import build_tool_trace_entry
+from app.responses_contract import (
+    RUNTIME_LAYER_DEFINITIONS,
+    build_runtime_input,
+    extend_stateless_input_with_tool_outputs,
+)
+from app.session_context import (
+    build_layered_context,
+    build_persisted_session_state,
+    load_runtime_session_state,
+    render_layered_context_message,
+)
+from app.settings import get_responses_store_enabled
+from app.tool_registry import execute_registered_tool, get_response_tools
+from app.tool_runtime import (
+    append_tool_state as runtime_append_tool_state,
+    execute_tool_runtime_call,
+    has_acceptance_signal,
+    has_completion_signal,
+    has_new_method_signal,
+    has_retry_signal,
+    load_primary_follow_up_intervention,
+    load_recent_interventions,
+    preflight_tool_call as runtime_preflight_tool_call,
+    safe_scalar_one_or_none,
+    tool_state_mentions_skill as runtime_tool_state_mentions_skill,
+)
 
-# 注册的 Tool 定义列表
-TOOL_DEFINITIONS = [
-    recall_context.TOOL_DEFINITION,
-    search_memory.TOOL_DEFINITION,
-    formulate.TOOL_DEFINITION,
-    save_nickname.TOOL_DEFINITION,
-    update_profile.TOOL_DEFINITION,
-    save_session.TOOL_DEFINITION,
-    match_intervention.TOOL_DEFINITION,
-    load_skill.TOOL_DEFINITION,
-    render_card.TOOL_DEFINITION,
-    record_outcome.TOOL_DEFINITION,
-    referral.TOOL_DEFINITION,
-]
+TOOL_DEFINITIONS = get_response_tools()
 
 
 async def _execute_tool(
@@ -51,31 +56,122 @@ async def _execute_tool(
 ) -> str:
     """根据 tool_name 执行对应的 Tool，返回结果字符串"""
     args = json.loads(arguments) if arguments else {}
+    return await execute_registered_tool(
+        tool_name,
+        args,
+        user_id=user_id,
+        session_id=session_id,
+        db=db,
+    )
 
-    if tool_name == "recall_context":
-        return await recall_context.execute(user_id, db)
-    if tool_name == "search_memory":
-        return await search_memory.execute(user_id, args, db)
-    if tool_name == "formulate":
-        return await formulate.execute(session_id, user_id, args, db)
-    if tool_name == "save_nickname":
-        return await save_nickname.execute(user_id, args, db)
-    if tool_name == "update_profile":
-        return await update_profile.execute(user_id, args, db)
-    if tool_name == "save_session":
-        return await save_session.execute(session_id, db)
-    if tool_name == "match_intervention":
-        return await match_intervention.execute(session_id, user_id, db)
-    if tool_name == "load_skill":
-        return await load_skill.execute(args)
-    if tool_name == "render_card":
-        return await render_card.execute(args)
-    if tool_name == "record_outcome":
-        return await record_outcome.execute(session_id, user_id, args, db)
-    if tool_name == "referral":
-        return await referral.execute(args)
 
-    return json.dumps({"error": f"Unknown tool: {tool_name}"})
+async def _preflight_tool_call(
+    tool_name: str,
+    arguments: dict,
+    user_id: str,
+    session_id: str,
+    user_message: str,
+    db: AsyncSession,
+    messages: list[dict] | None = None,
+    tool_state: list[dict] | None = None,
+) -> str | None:
+    """在执行高依赖工具前做轻量前置校验。"""
+    return await runtime_preflight_tool_call(
+        tool_name,
+        arguments,
+        user_id=user_id,
+        session_id=session_id,
+        user_message=user_message,
+        db=db,
+        tool_state=tool_state,
+    )
+
+
+def _estimate_turn_number(history: list[dict]) -> int:
+    """根据历史消息估算当前轮次。"""
+    user_turns = sum(1 for item in history if item.get("role") == "user")
+    return user_turns + 1
+
+
+def _has_acceptance_signal(user_message: str) -> bool:
+    return has_acceptance_signal(user_message)
+
+
+def _has_completion_signal(user_message: str) -> bool:
+    return has_completion_signal(user_message)
+
+
+def _has_new_method_signal(user_message: str) -> bool:
+    return has_new_method_signal(user_message)
+
+
+def _has_retry_signal(user_message: str) -> bool:
+    return has_retry_signal(user_message)
+
+
+async def _load_recent_interventions(db: AsyncSession, user_id: str, limit: int = 5) -> list[Intervention]:
+    return await load_recent_interventions(db, user_id, limit=limit)
+
+
+async def _load_primary_follow_up_intervention(
+    db: AsyncSession,
+    user_id: str,
+    user_message: str,
+) -> Intervention | None:
+    return await load_primary_follow_up_intervention(db, user_id, user_message)
+
+
+async def _safe_scalar_one_or_none(result):
+    return await safe_scalar_one_or_none(result)
+
+
+def _tool_output_mentions_skill(messages: list[dict], tool_name: str, skill_name: str) -> bool:
+    for item in reversed(messages):
+        if item.get("role") != "tool":
+            continue
+        content = item.get("content")
+        if not isinstance(content, str):
+            continue
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            continue
+
+        if tool_name == "match_intervention":
+            for plan in parsed.get("plans", []):
+                if plan.get("skill_name") == skill_name:
+                    return True
+        elif tool_name == "load_skill":
+            if parsed.get("skill_name") == skill_name:
+                return True
+    return False
+
+
+def _tool_state_mentions_skill(tool_state: list[dict] | None, tool_name: str, skill_name: str) -> bool:
+    return runtime_tool_state_mentions_skill(tool_state, tool_name, skill_name)
+
+
+def _append_tool_state(tool_state: list[dict], tool_name: str, result: str) -> None:
+    try:
+        envelope = json.loads(result)
+    except json.JSONDecodeError:
+        return
+    if isinstance(envelope, dict):
+        runtime_append_tool_state(
+            tool_state,
+            tool_name=tool_name,
+            arguments={},
+            call_id=None,
+            envelope=envelope,
+        )
+
+
+def _build_context_messages(context: dict) -> list[dict]:
+    """把分层上下文转换为模型输入前的上下文消息。"""
+    return [{
+        "role": "assistant",
+        "content": render_layered_context_message(context),
+    }, *context.get("working_memory", [])]
 
 
 async def chat(
@@ -87,98 +183,149 @@ async def chat(
     db: AsyncSession,
     alignment_score: int | None = None,
     trace_collector: list[dict] | None = None,
+    previous_response_id: str | None = None,
+    persisted_session_state: dict | None = None,
 ) -> dict:
     """执行一轮对话，返回 {"reply": str, "card_data": dict | None}"""
+    turn_number = _estimate_turn_number(history)
+    stable_state = await load_runtime_session_state(
+        db=db,
+        user_id=user_id,
+        session_id=session_id,
+        alignment_score=alignment_score,
+        persisted_state=persisted_session_state,
+    )
+    layered_context = build_layered_context(
+        history=history,
+        user_message=user_message,
+        stable_state=stable_state,
+        persisted_state=persisted_session_state,
+    )
+    effective_history = _build_context_messages(layered_context)
     messages = [
-        {"role": "system", "content": build_system_prompt(alignment_score)},
-        *history,
+        {"role": "system", "content": build_system_prompt(alignment_score, turn_number=turn_number)},
+        *effective_history,
         {"role": "user", "content": user_message},
     ]
 
     card_data = None  # 本轮是否有卡片数据
+    store_enabled = get_responses_store_enabled()
     llm_trace = {
         "model": os.environ["AZURE_OPENAI_DEPLOYMENT"],
+        "endpoint": "responses",
         "request_count": 0,
         "prompt_tokens": 0,
         "completion_tokens": 0,
         "total_tokens": 0,
         "latency_ms": 0,
+        "final_phase": None,
+        "response_ids": [],
+        "phase_timeline": [
+            {
+                "phase": "working_contract",
+                "kind": "input",
+                "source": "runtime_injection" if (previous_response_id and store_enabled) else "system_prompt",
+            },
+            {
+                "phase": "working_context",
+                "kind": "input",
+                "source": "persisted_state" if persisted_session_state else "live_refresh",
+            },
+            {
+                "phase": "state_refresh",
+                "kind": "state",
+                "source": "merged_runtime_state",
+            },
+        ],
+        "persisted_session_state": build_persisted_session_state(layered_context),
+        "runtime_layers": dict(RUNTIME_LAYER_DEFINITIONS),
+        "runtime_mode": "stateful" if (previous_response_id and store_enabled) else "stateless",
     }
+    current_turn_tool_state: list[dict] = []
+    pending_input, active_previous_response_id = build_runtime_input(
+        effective_history=effective_history,
+        user_message=user_message,
+        alignment_score=alignment_score,
+        turn_number=turn_number,
+        previous_response_id=previous_response_id,
+        store_enabled=store_enabled,
+    )
 
     # Tool Use 自主推理循环
     max_iterations = 10
     for _ in range(max_iterations):
         llm_started = time.perf_counter()
-        response = await client.chat.completions.create(
-            model=llm_trace["model"],
-            messages=messages,
-            tools=TOOL_DEFINITIONS,
-        )
+        create_kwargs = {
+            "model": llm_trace["model"],
+            "tools": get_response_tools(),
+            "instructions": messages[0]["content"],
+            "input": pending_input,
+            "store": store_enabled,
+        }
+        if active_previous_response_id is not None:
+            create_kwargs["previous_response_id"] = active_previous_response_id
+            create_kwargs.pop("instructions", None)
+
+        response = await client.responses.create(**create_kwargs)
+        if getattr(response, "id", None):
+            llm_trace["response_ids"].append(response.id)
         llm_trace["request_count"] += 1
         llm_trace["latency_ms"] += int((time.perf_counter() - llm_started) * 1000)
-        usage = getattr(response, "usage", None)
-        llm_trace["prompt_tokens"] += getattr(usage, "prompt_tokens", 0) or 0
-        llm_trace["completion_tokens"] += getattr(usage, "completion_tokens", 0) or 0
-        llm_trace["total_tokens"] += getattr(usage, "total_tokens", 0) or 0
+        prompt_tokens, completion_tokens, total_tokens = get_usage_counts(response)
+        llm_trace["prompt_tokens"] += prompt_tokens
+        llm_trace["completion_tokens"] += completion_tokens
+        llm_trace["total_tokens"] += total_tokens
 
-        choice = response.choices[0]
+        tool_calls = extract_response_function_calls(response)
+        if tool_calls:
+            pending_tool_outputs: list[dict] = []
+            active_previous_response_id = getattr(response, "id", None) if store_enabled else None
+            llm_trace["phase_timeline"].append({
+                "phase": "tool_call",
+                "kind": "output",
+                "count": len(tool_calls),
+            })
 
-        # LLM 决定调用 Tool
-        if choice.finish_reason == "tool_calls" and choice.message.tool_calls:
-            messages.append(choice.message.model_dump())
-
-            for tool_call in choice.message.tool_calls:
-                started = time.perf_counter()
+            for tool_call in tool_calls:
                 try:
-                    result = await _execute_tool(
-                        tool_name=tool_call.function.name,
-                        arguments=tool_call.function.arguments,
+                    envelope, pending_tool_output, produced_card_data = await execute_tool_runtime_call(
+                        tool_call,
                         user_id=user_id,
                         session_id=session_id,
+                        user_message=user_message,
                         db=db,
+                        tool_state=current_turn_tool_state,
+                        execute_tool=_execute_tool,
+                        preflight_tool=_preflight_tool_call,
+                        trace_collector=trace_collector,
                     )
-                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    if produced_card_data:
+                        card_data = produced_card_data
 
-                    if trace_collector is not None:
-                        trace_collector.append(build_tool_trace_entry(
-                            tool_name=tool_call.function.name,
-                            arguments=tool_call.function.arguments,
-                            result=result,
-                            success=True,
-                            latency_ms=latency_ms,
-                        ))
-
-                    # 如果 load_skill 或 referral 返回了 card_data，提取出来
-                    if tool_call.function.name in ("load_skill", "referral", "render_card"):
-                        try:
-                            parsed = json.loads(result)
-                            if parsed.get("card_data"):
-                                card_data = parsed["card_data"]
-                        except (json.JSONDecodeError, KeyError):
-                            pass
-
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result,
+                    llm_trace["phase_timeline"].append({
+                        "phase": "tool_result",
+                        "kind": "state",
+                        "tool": tool_call.name,
                     })
+                    pending_tool_outputs.append(pending_tool_output)
                 except Exception as exc:
-                    latency_ms = int((time.perf_counter() - started) * 1000)
-                    if trace_collector is not None:
-                        trace_collector.append(build_tool_trace_entry(
-                            tool_name=tool_call.function.name,
-                            arguments=tool_call.function.arguments,
-                            result=str(exc),
-                            success=False,
-                            latency_ms=latency_ms,
-                        ))
                     raise
 
+            pending_input = (
+                pending_tool_outputs
+                if store_enabled
+                else extend_stateless_input_with_tool_outputs(pending_input, pending_tool_outputs)
+            )
             continue
 
-        # LLM 生成了最终回复
+        reply_text, final_phase = extract_response_message_text(response)
+        llm_trace["final_phase"] = final_phase
+        llm_trace["phase_timeline"].append({
+            "phase": final_phase or "final_answer",
+            "kind": "output",
+        })
         return {
-            "reply": choice.message.content or "",
+            "reply": reply_text,
             "card_data": card_data,
             "llm_trace": llm_trace,
         }

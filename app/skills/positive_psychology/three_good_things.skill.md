@@ -1,5 +1,6 @@
 ---
 name: three_good_things
+version: 2.0
 display_name: 三件好事
 category: positive_psychology
 trigger: 用户情绪低落但不严重，适合用积极回忆提升情绪，作为日常练习推荐
@@ -9,6 +10,14 @@ estimated_turns: 4-6
 estimated_duration: 5-8min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 48
+follow_up_rules:
+  - 下次优先询问用户这一周有没有继续找三件好事，以及最容易漏掉哪类好事
+  - 若用户觉得太套路，改成只找一件具体的小事并追问原因
+completion_signals:
+  - 我今天能想到几件还不错的事
+  - 这样想好像没那么糟
+  - 我发现好事不是完全随机的
 ---
 
 ## 目标

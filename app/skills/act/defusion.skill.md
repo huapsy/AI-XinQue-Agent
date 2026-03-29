@@ -1,5 +1,6 @@
 ---
 name: defusion
+version: 2.0
 display_name: 认知解离
 category: act
 trigger: 用户被某个反复出现的想法"困住"，无法与想法保持距离，反刍思维明显
@@ -9,6 +10,14 @@ estimated_turns: 5-7
 estimated_duration: 8-12min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 48
+follow_up_rules:
+  - 下次优先询问用户是否在想法再次出现时用过“我注意到我有一个想法”
+  - 若用户仍想压制念头，先澄清解离不是赶走想法
+completion_signals:
+  - 我试着和那个想法保持距离
+  - 我注意到那个念头又来了
+  - 这样说出来好像没那么黏住了
 ---
 
 ## 目标

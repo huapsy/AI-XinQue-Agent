@@ -1,5 +1,6 @@
 ---
 name: grounding_54321
+version: 2.0
 display_name: 5-4-3-2-1 接地练习
 category: mindfulness
 trigger: 用户正在经历恐慌发作、高度焦虑、解离感，需要立即回到当下
@@ -8,6 +9,14 @@ card_template: guided_exercise
 estimated_turns: 3-4
 estimated_duration: 3-5min
 contraindications: []
+cooldown_hours: 12
+follow_up_rules:
+  - 12 小时内优先询问用户是否再次用五感练习把自己拉回当下
+  - 若效果弱，后续优先补更短的躯体稳定化提示，而不是重复完整卡片
+completion_signals:
+  - 我跟着做完了
+  - 现在感觉回到当下了一点
+  - 没刚才那么慌了
 ---
 
 ## 目标

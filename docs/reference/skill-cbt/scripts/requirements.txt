@@ -1,0 +1,6 @@
+# 仅用于本地从参考书导出文本；不必装入 app/backend
+pypdf>=5.0.0
+pyyaml>=6.0
+ebooklib>=0.18
+beautifulsoup4>=4.12.0
+lxml>=5.0.0

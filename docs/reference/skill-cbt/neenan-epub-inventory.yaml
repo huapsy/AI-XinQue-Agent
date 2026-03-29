@@ -1,0 +1,13 @@
+# Michael Neenan — Cognitive behaviour therapy: 100 key points in therapy (Routledge)
+# EPUB: Cognitive behaviour therapy; 10 - Michael Neenan.epub
+#
+# EPUB 的 TOC 未覆盖全部 100 条；脚本会额外导出「TOC 未引用」的 spine HTML 全文。
+# 个别 TOC 项（如 “WAYS OF DETECTING NATS”）对应 HTML 仅为分节标题、正文在后续文件中，导出结果会 skip_short，属正常。
+# 具体文件列表与 xinque_role 见 extracted/neenan_epub/_neenan_manifest.txt（运行脚本后生成）。
+#
+# 用户向干预条目（Markdown）：运行 scripts/build_neenan_intervention_mds.py 生成
+# docs/reference/skill-cbt/interventions/neenan_*.md（要点 1–100，除 33、34 为手工精修 guided_self_discovery / imagery）。
+
+source:
+  id: neenan_cbt_100_key_points
+  epub_glob: "Cognitive behaviour therapy*.epub"

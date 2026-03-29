@@ -76,6 +76,8 @@ class ProfileFlowTests(unittest.TestCase):
         recall_raw = __import__("asyncio").run(recall_context.execute("user-1", db))
         recall_payload = json.loads(recall_raw)
 
+        self.assertEqual(formulate_payload["status"], "ok")
+        self.assertEqual(formulate_payload["schema"], "formulation_v1")
         self.assertEqual(formulate_payload["formulation"]["primary_issue"], "工作压力下的自我怀疑")
         self.assertEqual(profile.clinical_profile["key_themes"], ["workplace"])
         self.assertIn("breathing_478", profile.preferences["preferred_techniques"])

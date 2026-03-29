@@ -1,0 +1,140 @@
+# CBT Made Simple 2e (Josefowitz & Myran, 2021) — 全书可抽取单元
+# 页码：PDF 阅读器 1-based 页码（与 pypdf 页索引 +1 一致）
+# 用途：把心雀需要的「技能」从基础理论到干预、案例、附录答案全部结构化列出，
+#       再人工/半自动改写成 app/skills/**/*.skill.md 或内部 RAG，而非仅 Part 3。
+#
+# xinque_role 说明：
+#   agent_guidance     — 偏「教练/咨询师怎么做」，可蒸馏进 system_prompt、内部规范
+#   psychoeducation    — 可改成对用户说明 CBT 框架的短内容
+#   formulation        — 与个案概念化、四因素、识别想法/情绪等对齐，强化 formulate / 探索
+#   session_structure  — 会谈结构、议程、作业；可映射会话阶段或 save_session 提示
+#   intervention       — 典型 load_skill 候选
+#   beliefs            — 核心信念/假设/行为实验；长程、需谨慎禁忌
+#   case_integration   — 整案示范，适合评估集、少样本、内部培训
+#   reference_only     — 附录答案、参考文献等，一般不直接当用户-facing skill
+
+source:
+  id: josefowitz_myran_cbt_made_simple_2e
+  pdf_glob: "CBT Made Simple*.pdf"
+  note: "若更换 PDF 版本，请用 scripts/export_cbt_made_simple.py --detect-chapters 重新校准页码"
+
+sections:
+  - id: front_matter
+    title: "封面、推荐、版权、目录等"
+    pdf_start: 1
+    pdf_end: 11
+    xinque_role: reference_only
+
+  - id: foreword
+    title: "Foreword（Zindel Segal）"
+    pdf_start: 12
+    pdf_end: 13
+    xinque_role: agent_guidance
+
+  - id: introduction
+    title: "Introduction"
+    pdf_start: 14
+    pdf_end: 18
+    xinque_role: agent_guidance
+
+  - id: ch01_cbt_theory
+    title: "Ch.1 Use CBT Theory to Understand Your Clients"
+    pdf_start: 19
+    pdf_end: 39
+    xinque_role: formulation
+
+  - id: ch02_problems_and_strengths
+    title: "Ch.2 Focus on Your Clients' Problems and Strengths"
+    pdf_start: 40
+    pdf_end: 60
+    xinque_role: formulation
+
+  - id: ch03_goals_for_therapy
+    title: "Ch.3 Develop Goals for Therapy"
+    pdf_start: 61
+    pdf_end: 73
+    xinque_role: session_structure
+
+  - id: ch04_structure_sessions
+    title: "Ch.4 Structure Your Sessions"
+    pdf_start: 74
+    pdf_end: 92
+    xinque_role: session_structure
+
+  - id: ch05_feelings_physical_behavior
+    title: "Ch.5 Identify Feelings, Physical Reactions, and Behaviors"
+    pdf_start: 93
+    pdf_end: 114
+    xinque_role: formulation
+
+  - id: ch06_which_thoughts
+    title: "Ch.6 Which Thoughts Do I Focus On?"
+    pdf_start: 115
+    pdf_end: 132
+    xinque_role: formulation
+
+  - id: ch07_identify_thoughts
+    title: "Ch.7 Identify Your Clients' Thoughts"
+    pdf_start: 133
+    pdf_end: 156
+    xinque_role: formulation
+
+  - id: ch08_evidence_balanced_thoughts
+    title: "Ch.8 Look for Evidence and Create Balanced Thoughts"
+    pdf_start: 157
+    pdf_end: 185
+    xinque_role: intervention
+
+  - id: ch09_problem_solving
+    title: "Ch.9 Problem Solving — Finding a Better Way"
+    pdf_start: 186
+    pdf_end: 206
+    xinque_role: intervention
+
+  - id: ch10_behavioral_activation
+    title: "Ch.10 Behavioral Activation"
+    pdf_start: 207
+    pdf_end: 231
+    xinque_role: intervention
+
+  - id: ch11_exposure
+    title: "Ch.11 Exposure Therapy"
+    pdf_start: 232
+    pdf_end: 254
+    xinque_role: intervention
+
+  - id: ch12_core_beliefs
+    title: "Ch.12 Working with Core Beliefs"
+    pdf_start: 255
+    pdf_end: 274
+    xinque_role: beliefs
+
+  - id: ch13_assumptions_behavioral_experiments
+    title: "Ch.13 Underlying Assumptions and Behavioral Experiments"
+    pdf_start: 275
+    pdf_end: 296
+    xinque_role: beliefs
+
+  - id: ch14_treatment_guidelines_case
+    title: "Ch.14 Treatment Guidelines and Case Illustration"
+    pdf_start: 297
+    pdf_end: 311
+    xinque_role: case_integration
+
+  - id: acknowledgments
+    title: "Acknowledgments"
+    pdf_start: 312
+    pdf_end: 313
+    xinque_role: reference_only
+
+  - id: appendix_your_turn_answers
+    title: "Appendix — Answers to YOUR TURN! Exercises"
+    pdf_start: 314
+    pdf_end: 329
+    xinque_role: reference_only
+
+  - id: references
+    title: "References"
+    pdf_start: 330
+    pdf_end: 334
+    xinque_role: reference_only

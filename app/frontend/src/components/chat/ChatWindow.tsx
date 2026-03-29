@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { API_BASE } from "../../config";
+import { buildHashRoute } from "../../navigation";
+import { getClientId, getStoredSessionId, setStoredSessionId } from "../../sessionStorage";
 import { shouldRestoreSavedSession } from "./sessionRestore";
 import { describeMoodTrend, type MoodTrendPayload } from "./moodTrend";
-
-const API_BASE = "http://localhost:8000";
 
 // ── 类型定义 ──
 
@@ -56,16 +57,6 @@ const EMPTY_TREND: MoodTrendPayload = {
 };
 
 // ── 工具函数 ──
-
-function getClientId(): string {
-  const key = "xinque_client_id";
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(key, id);
-  }
-  return id;
-}
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -198,12 +189,20 @@ function MoodCheckin({ onSelect }: { onSelect: (score: number) => void }) {
 
 // ── 主组件 ──
 
-export default function ChatWindow() {
+interface ChatWindowProps {
+  routeSessionId?: string | null;
+  routeHistoryMode?: boolean;
+}
+
+export default function ChatWindow({
+  routeSessionId = null,
+  routeHistoryMode = false,
+}: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(
-    localStorage.getItem("xinque_session_id"),
+    routeSessionId || getStoredSessionId(),
   );
   const [sessionList, setSessionList] = useState<SessionItem[]>([]);
   const [viewingHistory, setViewingHistory] = useState(false);
@@ -251,7 +250,7 @@ export default function ChatWindow() {
   // 页面关闭时结束会话
   useEffect(() => {
     const handleUnload = () => {
-      const sid = localStorage.getItem("xinque_session_id");
+      const sid = getStoredSessionId();
       if (sid) {
         navigator.sendBeacon(`${API_BASE}/api/sessions/${sid}/end`);
       }
@@ -263,7 +262,19 @@ export default function ChatWindow() {
   // 初始化：恢复会话 或 创建新会话
   useEffect(() => {
     const init = async () => {
-      const savedSid = localStorage.getItem("xinque_session_id");
+      if (routeSessionId) {
+        try {
+          const res = await fetch(`${API_BASE}/api/sessions/${routeSessionId}/messages`);
+          const data = await res.json();
+          setSessionId(routeSessionId);
+          setStoredSessionId(routeSessionId);
+          setMessages(data.messages || []);
+          setViewingHistory(routeHistoryMode);
+        } catch { /* ignore */ }
+        return;
+      }
+
+      const savedSid = getStoredSessionId();
       if (savedSid) {
         // 尝试恢复已有会话
         try {
@@ -285,14 +296,14 @@ export default function ChatWindow() {
         });
         const data = await res.json();
         setSessionId(data.session_id);
-        localStorage.setItem("xinque_session_id", data.session_id);
+        setStoredSessionId(data.session_id);
         setShowMoodCheckin(true);
         loadSessionList();
         loadMoodTrend();
       } catch { /* ignore */ }
     };
     init();
-  }, [loadMoodTrend, loadSessionList]);
+  }, [loadMoodTrend, loadSessionList, routeHistoryMode, routeSessionId]);
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -317,7 +328,7 @@ export default function ChatWindow() {
 
       if (data.session_id && data.session_id !== sessionId) {
         setSessionId(data.session_id);
-        localStorage.setItem("xinque_session_id", data.session_id);
+        setStoredSessionId(data.session_id);
       }
 
       setMessages((prev) => [
@@ -351,7 +362,7 @@ export default function ChatWindow() {
       });
       const data = await res.json();
       setSessionId(data.session_id);
-      localStorage.setItem("xinque_session_id", data.session_id);
+      setStoredSessionId(data.session_id);
       setMessages([]);
       setViewingHistory(false);
       setShowMoodCheckin(true);
@@ -370,7 +381,7 @@ export default function ChatWindow() {
       setViewingHistory(isEnded);
       if (!isEnded) {
         setSessionId(sid);
-        localStorage.setItem("xinque_session_id", sid);
+        setStoredSessionId(sid);
       }
     } catch { /* ignore */ }
   }, [sessionList]);
@@ -472,7 +483,8 @@ export default function ChatWindow() {
           )}
           <span>心雀</span>
           {viewingHistory && <span style={S.historyBadge}>查看历史</span>}
-          <a href="#admin" style={S.adminLink}>统计</a>
+          <a href={buildHashRoute("history")} style={S.historyLink}>历史</a>
+          <a href={buildHashRoute("admin")} style={S.adminLink}>统计</a>
           <button style={S.newChatButton} onClick={newSession}>新对话</button>
         </div>
 
@@ -732,6 +744,18 @@ const S: Record<string, React.CSSProperties> = {
     border: "1px solid #d1d5db",
     backgroundColor: "#fff",
     color: "#2563eb",
+    fontSize: "13px",
+    textDecoration: "none",
+    fontWeight: 500,
+  },
+  historyLink: {
+    position: "absolute",
+    right: 152,
+    padding: "6px 12px",
+    borderRadius: "16px",
+    border: "1px solid #d1d5db",
+    backgroundColor: "#fff",
+    color: "#4f46e5",
     fontSize: "13px",
     textDecoration: "none",
     fontWeight: 500,

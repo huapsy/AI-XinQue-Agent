@@ -1,5 +1,6 @@
 ---
 name: gratitude_journal
+version: 2.0
 display_name: 感恩日记
 category: positive_psychology
 trigger: 用户情绪持续低落、消极过滤明显、只看到生活中不好的一面
@@ -9,6 +10,14 @@ estimated_turns: 4-5
 estimated_duration: 5-8min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 48
+follow_up_rules:
+  - 下次优先询问用户这周是否真的写过，写的时候最容易忽略哪类好事
+  - 若用户觉得练习空泛，后续改从非常具体的小事切入
+completion_signals:
+  - 我写了几件值得感恩的事
+  - 原来还是有一些小事不错
+  - 写下来以后感觉没那么灰了
 ---
 
 ## 目标

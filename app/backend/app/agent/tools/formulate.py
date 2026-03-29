@@ -15,74 +15,74 @@ from app.profile_helpers import apply_profile_patch, build_clinical_profile_patc
 
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "formulate",
-        "description": (
-            "P2 探索阶段的核心工具。在探索中每识别到有临床意义的新信息时调用。"
-            "传入本轮发现的增量观察（情绪、认知、行为等），工具内部合并到当前个案概念化。"
-            "返回完整的 formulation 和 readiness 状态。"
-            "readiness='sufficient' 或 'solid' 时，可以进入 P3 推荐干预方案。"
-            "不需要每轮都调用——用户说'嗯''好的'时不需要。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "emotions": {
-                    "type": "array",
-                    "description": "本轮识别到的情绪",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string", "description": "情绪名称，如焦虑、无力感、愤怒"},
-                            "intensity": {"type": "string", "description": "强度：mild/moderate/severe"},
-                            "trigger": {"type": "string", "description": "触发情境"},
-                        },
-                        "required": ["name"],
-                    },
-                },
-                "cognitions": {
-                    "type": "array",
-                    "description": "本轮识别到的认知模式/自动化思维",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "content": {"type": "string", "description": "思维内容，如'我永远做不完'"},
-                            "type": {"type": "string", "description": "认知扭曲类型：catastrophizing/dichotomous/negative_filtering/fortune_telling/mind_reading/personalising"},
-                        },
-                        "required": ["content"],
-                    },
-                },
-                "behaviors": {
+    "name": "formulate",
+    "description": (
+        "P2 探索阶段的核心工具。在探索中每识别到有临床意义的新信息时调用。"
+        "传入本轮发现的增量观察（情绪、认知、行为等），工具内部合并到当前个案概念化。"
+        "返回完整的 formulation 和 readiness 状态。"
+        "readiness='sufficient' 或 'solid' 时，可以进入 P3 推荐干预方案。"
+        "不需要每轮都调用——用户说'嗯''好的'时不需要。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "emotions": {
+                "type": "array",
+                "description": "本轮识别到的情绪",
+                "items": {
                     "type": "object",
-                    "description": "本轮识别到的行为模式",
                     "properties": {
-                        "maladaptive": {"type": "array", "items": {"type": "string"}, "description": "非适应性行为"},
-                        "adaptive": {"type": "array", "items": {"type": "string"}, "description": "适应性行为"},
+                        "name": {"type": "string", "description": "情绪名称，如焦虑、无力感、愤怒"},
+                        "intensity": {"type": "string", "description": "强度：mild/moderate/severe"},
+                        "trigger": {"type": "string", "description": "触发情境"},
                     },
-                },
-                "context": {
-                    "type": "object",
-                    "description": "问题情境信息",
-                    "properties": {
-                        "domain": {"type": "string", "description": "领域：workplace/family/relationship/health/education/other"},
-                        "duration": {"type": "string", "description": "持续时间"},
-                        "precipitant": {"type": "string", "description": "诱因/触发事件"},
-                        "generalization": {"type": "string", "description": "泛化情况"},
-                    },
-                },
-                "alliance_signal": {
-                    "type": "string",
-                    "description": "本轮对齐信号：aligned/confusion/disagreement/dissatisfaction/distrust/refusal/uncertainty",
-                },
-                "primary_issue": {
-                    "type": "string",
-                    "description": "核心问题描述（当你能概括时填写）",
+                    "required": ["name"],
                 },
             },
-            "required": [],
+            "cognitions": {
+                "type": "array",
+                "description": "本轮识别到的认知模式/自动化思维",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string", "description": "思维内容，如'我永远做不完'"},
+                        "type": {"type": "string", "description": "认知扭曲类型：catastrophizing/dichotomous/negative_filtering/fortune_telling/mind_reading/personalising"},
+                    },
+                    "required": ["content"],
+                },
+            },
+            "behaviors": {
+                "type": "object",
+                "description": "本轮识别到的行为模式",
+                "properties": {
+                    "maladaptive": {"type": "array", "items": {"type": "string"}, "description": "非适应性行为"},
+                    "adaptive": {"type": "array", "items": {"type": "string"}, "description": "适应性行为"},
+                },
+            },
+            "context": {
+                "type": "object",
+                "description": "问题情境信息",
+                "properties": {
+                    "domain": {"type": "string", "description": "领域：workplace/family/relationship/health/education/other"},
+                    "duration": {"type": "string", "description": "持续时间"},
+                    "precipitant": {"type": "string", "description": "诱因/触发事件"},
+                    "generalization": {"type": "string", "description": "泛化情况"},
+                },
+            },
+            "alliance_signal": {
+                "type": "string",
+                "description": "本轮对齐信号：aligned/confusion/disagreement/dissatisfaction/distrust/refusal/uncertainty",
+            },
+            "primary_issue": {
+                "type": "string",
+                "description": "核心问题描述（当你能概括时填写）",
+            },
         },
+        "required": [],
     },
 }
+
+FORMULATION_SCHEMA = "formulation_v1"
 
 
 def _merge_list(existing: list | None, new: list | None) -> list:
@@ -184,6 +184,26 @@ def _generate_mechanism(f: CaseFormulation) -> str | None:
     return None
 
 
+def _serialize_formulation(formulation: CaseFormulation) -> dict:
+    """将 formulation 规范化为稳定的结构化对象。"""
+    behavioral_patterns = formulation.behavioral_patterns or {}
+    return {
+        "readiness": formulation.readiness or "exploring",
+        "primary_issue": formulation.primary_issue,
+        "mechanism": formulation.mechanism,
+        "emotions": formulation.emotional_state or [],
+        "cognitive_patterns": formulation.cognitive_patterns or [],
+        "behavioral_patterns": {
+            "maladaptive": list(behavioral_patterns.get("maladaptive", []) or []),
+            "adaptive": list(behavioral_patterns.get("adaptive", []) or []),
+        },
+        "context": formulation.context or {},
+        "severity": formulation.severity,
+        "alliance_quality": formulation.alliance_quality,
+        "missing": formulation.missing or [],
+    }
+
+
 async def execute(
     session_id: str,
     user_id: str,
@@ -254,16 +274,7 @@ async def execute(
 
     # 返回完整 formulation
     return json.dumps({
-        "formulation": {
-            "readiness": formulation.readiness,
-            "primary_issue": formulation.primary_issue,
-            "mechanism": formulation.mechanism,
-            "emotions": formulation.emotional_state,
-            "cognitive_patterns": formulation.cognitive_patterns,
-            "behavioral_patterns": formulation.behavioral_patterns,
-            "context": formulation.context,
-            "severity": formulation.severity,
-            "alliance_quality": formulation.alliance_quality,
-            "missing": formulation.missing,
-        }
+        "status": "ok",
+        "schema": FORMULATION_SCHEMA,
+        "formulation": _serialize_formulation(formulation),
     }, ensure_ascii=False)

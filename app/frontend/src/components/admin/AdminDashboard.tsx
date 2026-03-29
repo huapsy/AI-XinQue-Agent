@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-
-const API_BASE = "http://localhost:8000";
+import { API_BASE } from "../../config";
+import { buildHashRoute } from "../../navigation";
 
 interface AdminMetrics {
   session_count: number;
@@ -43,7 +43,7 @@ export default function AdminDashboard() {
           <div style={S.eyebrow}>匿名统计</div>
           <h1 style={S.title}>心雀运营看板</h1>
         </div>
-        <a href="#chat" style={S.backLink}>返回对话</a>
+        <a href={buildHashRoute("chat")} style={S.backLink}>返回对话</a>
       </div>
       <div style={S.grid}>
         <MetricCard label="会话数" value={metrics.session_count} />

@@ -10,35 +10,33 @@ from app.profile_helpers import apply_profile_patch
 
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "update_profile",
-        "description": (
-            "当用户明确表达沟通或干预偏好时调用。"
-            "只允许更新 preferences，不要用它写风险或临床判断。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "preferences": {
-                    "type": "object",
-                    "properties": {
-                        "communication_style": {
-                            "type": "string",
-                            "enum": ["gentle", "direct"],
-                        },
-                        "preferred_techniques": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "disliked_techniques": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
+    "name": "update_profile",
+    "description": (
+        "当用户明确表达沟通或干预偏好时调用。"
+        "只允许更新 preferences，不要用它写风险或临床判断。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "preferences": {
+                "type": "object",
+                "properties": {
+                    "communication_style": {
+                        "type": "string",
+                        "enum": ["gentle", "direct"],
+                    },
+                    "preferred_techniques": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "disliked_techniques": {
+                        "type": "array",
+                        "items": {"type": "string"},
                     },
                 },
             },
-            "required": ["preferences"],
         },
+        "required": ["preferences"],
     },
 }
 

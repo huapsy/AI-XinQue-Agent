@@ -51,6 +51,75 @@
 - `contracts/sprint-XX-contract.md` — Generator 与 Evaluator 协商的成功标准
 - `evaluations/sprint-XX-eval.md` — Evaluator 的评估报告（通过/不通过 + 问题清单）
 
+## 文档目录治理
+
+以下规则用于明确 `design`、`plans`、`specs`、`contracts`、`evaluations`、`testing` 的定位，避免文档混放。
+
+### 目录定位
+
+- `docs/design/`
+  - 权威设计层，回答“系统应该是什么样”
+  - 存放产品总方案、系统架构、核心机制、长期有效的运行时约束、稳定变量说明
+  - 这里的文档优先级高于 `plans/`、`specs/`
+- `docs/plans/`
+  - 实施计划层，回答“跨多个 sprint 准备怎么做”
+  - 只存放跨多个 sprint 的问题分析与解决计划
+  - 这里不是权威产品设计，不应和 `product-plan-v2.md` 并列为真相源
+- `specs/`
+  - Sprint 规格层，回答“这一轮要交付什么”
+  - 存放背景、目标、范围、非目标、预期结果
+- `contracts/`
+  - Sprint 验收契约层，回答“做到什么算完成”
+  - 存放成功标准、证据要求、测试约束
+- `evaluations/`
+  - Sprint 评估结果层，回答“这一轮实际做到了什么”
+  - 存放 PASS / PARTIAL / FAIL、问题清单、验证证据
+- `docs/testing/`
+  - 测试资产层，回答“怎么测”
+  - 存放手动测试清单、测试模板、回归说明，不存放设计或评估结论
+
+### 放置规则
+
+- 如果文档定义长期产品真相、架构原则、核心约束，放 `docs/design/`
+- 如果文档描述跨多个 sprint 的问题分析、实施路线、阶段性解决计划，放 `docs/plans/`
+- 如果文档定义单个 sprint 的目标与范围，放 `specs/`
+- 如果文档定义单个 sprint 的成功标准，放 `contracts/`
+- 如果文档记录单个 sprint 的实际结果，放 `evaluations/`
+- 如果文档主要用于测试执行，放 `docs/testing/`
+- 若 `plans/` 与 `design/` 内容冲突，以 `docs/design/product-plan-v2.md` 为准，再回头修正 `plans/`
+
+### 文件命名规则
+
+- `docs/design/`
+  - 产品总方案：`product-plan-vN.md`
+  - 实施状态总览：`product-plan-vN-implementation-status.md`
+  - 稳定专题设计：`主题名-vN.md` 或 `NN-主题名.md`
+  - 这里不要使用 `sprint-XX-...` 命名，除非该文件本身是对 sprint 设计的长期归档说明
+- `docs/plans/`
+  - 统一命名：`YYYY-MM-DD-主题名-plan.md`
+  - 只用于跨多个 sprint 的 plan，不用于单个 sprint
+  - 这里不要使用 `sprint-XX-...`、`roadmap`、`overhaul`、`assessment`、`product-plan-...` 命名，避免与其他目录混淆
+- `specs/`
+  - 统一命名：`sprint-XX-功能名.md`
+- `contracts/`
+  - 统一命名：`sprint-XX-contract.md`
+- `evaluations/`
+  - 统一命名：`sprint-XX-eval.md`
+- `docs/testing/`
+  - 手动测试清单：`manual-test-checklist-vN.md`
+  - 测试模板：`test-template-vN.md`
+  - 回归说明：`regression-guide-vN.md`
+
+### 执行要求
+
+- 新建文档前，先判断它属于“设计 / 计划 / 规格 / 契约 / 评估 / 测试”哪一层
+- 不要把跨多个 sprint 的总路线图写进 `specs/`
+- 不要把单个 sprint 的 implementation plan 放进 `docs/plans/`
+- 不要把测试清单写进 `docs/design/`
+- 不要把评估结果写进 `docs/plans/`
+- 如果新增的是 Responses / tools / skills 等专题跨 sprint 计划，默认放 `docs/plans/`，并使用 `*-plan.md` 命名
+- 如果新增的是长期有效的架构规则，必须先更新 `docs/design/product-plan-v2.md` 或对应 `design` 文档
+
 ## 目录结构
 
 ```
@@ -58,7 +127,7 @@ AI_XinQue_Agent/                        ← harness 层
 ├── CLAUDE.md                           ← 本文件
 ├── docs/
 │   ├── design/                         ← 设计文档与参考文献整理
-│   │   └── product-plan.md             ← 产品方案（权威设计文档）
+│   │   └── product-plan-v2.md          ← 产品方案（权威设计文档）
 │   └── reference/                      ← 参考文献 PDF
 ├── specs/                              ← Planner 输出
 ├── contracts/                          ← Sprint 成功标准
@@ -198,6 +267,19 @@ cd app/frontend && npm test
 ## 参考文档
 
 - @docs/design/product-plan-v2.md — 产品方案 v2（权威，当前版本）
-- @docs/design/product-plan.md — 产品方案 v1（已归档，多 Agent 管道架构）
+- @docs/design/product-plan-v1.md — 产品方案 v1（已归档，多 Agent 管道架构）
 - @docs/design/ — 设计文档与参考文献整理
 - @docs/reference/ — 原始参考文献 PDF
+
+## Prompt 约束
+
+- 凡是新增、修改、重构系统 Prompt、工具使用 Prompt、评估 Prompt、结构化输出 Prompt，都必须参考 `docs/reference/gpt-5.4/prompt-guidance-for-GPT-5.4.md`
+- 该文件是本项目 Prompt 设计的默认依据，不是可选参考
+- 如果实现明确偏离该文件中的建议，需要在对应的 spec、contract、evaluation 或代码说明中写出偏离原因
+
+## OpenAI 协议参考
+
+- 凡是新增、修改、重构 Responses API 链路，必须参考 [Migrate to the Responses API](https://developers.openai.com/api/docs/guides/migrate-to-responses) 与 [Text generation](https://developers.openai.com/api/docs/guides/text)
+- 凡是新增、修改、重构 tool schema、tool runtime、function calling，必须参考 [Using tools](https://developers.openai.com/api/docs/guides/tools)
+- 凡是新增、修改、重构 skill manifest、skill registry、skill 与平台能力的映射，必须参考 [Skills](https://developers.openai.com/api/docs/guides/tools-skills)
+- 本项目内部 `skills` 默认视为产品层能力包；若要与官方 Skills 对齐，先更新 [`responses-tools-skills-architecture.md`](/E:/AI_XinQue_Agent/docs/design/responses-tools-skills-architecture.md)

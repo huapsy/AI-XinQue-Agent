@@ -8,25 +8,26 @@ from pathlib import Path
 
 import yaml
 
+from app.skill_manifest import validate_skill_manifest
+from app.skill_registry import load_skill_registry
+
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "load_skill",
-        "description": (
-            "用户选择了干预方案后调用，加载 Skill 的完整内容。"
-            "返回 Skill 的目标、引入话语、分步执行流程、卡片数据、注意事项等。"
-            "加载后你按 Skill 的执行流程逐步引导用户完成干预。"
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "skill_name": {
-                    "type": "string",
-                    "description": "Skill 名称，如 cognitive_restructuring、breathing_478、emotion_naming",
-                },
+    "name": "load_skill",
+    "description": (
+        "用户选择了干预方案后调用，加载 Skill 的完整内容。"
+        "返回 Skill 的目标、引入话语、分步执行流程、卡片数据、注意事项等。"
+        "加载后你按 Skill 的执行流程逐步引导用户完成干预。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "skill_name": {
+                "type": "string",
+                "description": "Skill 名称，如 cognitive_restructuring、breathing_478、emotion_naming",
             },
-            "required": ["skill_name"],
         },
+        "required": ["skill_name"],
     },
 }
 
@@ -109,12 +110,42 @@ async def execute(arguments: dict) -> str:
     """执行 load_skill，返回 Skill 完整内容"""
     skill_name = arguments.get("skill_name", "")
     if not skill_name:
-        return json.dumps({"error": "skill_name is required"}, ensure_ascii=False)
+        return json.dumps({
+            "status": "error",
+            "tool": "load_skill",
+            "error": "skill_name is required",
+        }, ensure_ascii=False)
+
+    registry = load_skill_registry()
+    entry = registry.get(skill_name)
+    if entry is not None:
+        manifest = entry["manifest"]
+        protocol = entry["protocol"]
+        card_data = _parse_card_data(protocol)
+        result = {
+            "status": "ok",
+            "tool": "load_skill",
+            "skill_name": manifest.get("name"),
+            "display_name": manifest.get("display_name"),
+            "category": manifest.get("category"),
+            "manifest": manifest,
+            "protocol": protocol,
+            "follow_up_rules": manifest.get("follow_up_rules", []),
+            "completion_signals": manifest.get("completion_signals", []),
+        }
+        if card_data:
+            result["card_data"] = card_data
+            result["render_payload"] = _build_render_payload(manifest, skill_name, card_data)
+        return json.dumps(result, ensure_ascii=False)
 
     skill_file = _find_skill_file(skill_name)
     if skill_file is None:
         return json.dumps(
-            {"error": f"Skill '{skill_name}' not found"},
+            {
+                "status": "error",
+                "tool": "load_skill",
+                "error": f"Skill '{skill_name}' not found",
+            },
             ensure_ascii=False,
         )
 
@@ -122,18 +153,22 @@ async def execute(arguments: dict) -> str:
 
     # 分离 frontmatter 和正文
     end = text.index("---", 3)
-    frontmatter = yaml.safe_load(text[3:end])
+    frontmatter = validate_skill_manifest(yaml.safe_load(text[3:end]) or {})
     body = text[end + 3:].strip()
 
     # 提取卡片数据
     card_data = _parse_card_data(body)
 
     result = {
+        "status": "ok",
+        "tool": "load_skill",
         "skill_name": frontmatter.get("name"),
         "display_name": frontmatter.get("display_name"),
         "category": frontmatter.get("category"),
-        "output_type": frontmatter.get("output_type"),
-        "content": body,
+        "manifest": frontmatter,
+        "protocol": body,
+        "follow_up_rules": frontmatter.get("follow_up_rules", []),
+        "completion_signals": frontmatter.get("completion_signals", []),
     }
 
     if card_data:

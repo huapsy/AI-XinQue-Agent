@@ -1,5 +1,6 @@
 ---
 name: breathing_478
+version: 2.0
 display_name: 4-7-8 呼吸法
 category: mindfulness
 trigger: 用户感到焦虑、紧张、压力大，需要即时的身体放松
@@ -9,6 +10,14 @@ estimated_turns: 3-4
 estimated_duration: 3-5min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 24
+follow_up_rules:
+  - 24 小时内优先询问用户是否做过、做完后的身体变化如何
+  - 若用户反馈头晕或不适，避免立即重复同类呼吸练习
+completion_signals:
+  - 我做完了
+  - 我刚试了那个呼吸
+  - 呼吸后感觉缓下来一点
 ---
 
 ## 目标

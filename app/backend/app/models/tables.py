@@ -149,3 +149,27 @@ class TraceRecord(Base):
         from sqlalchemy import select
 
         return select(cls).where(cls.session_id == session_id).order_by(cls.turn_number)
+
+
+class SessionState(Base):
+    __tablename__ = "session_states"
+
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("sessions.session_id"), primary_key=True)
+    current_focus: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    semantic_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    stable_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class SessionStateHistory(Base):
+    __tablename__ = "session_state_history"
+
+    history_id: Mapped[str] = mapped_column(Text, primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("sessions.session_id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    current_focus: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    semantic_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    stable_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    change_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

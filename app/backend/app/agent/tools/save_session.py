@@ -8,13 +8,11 @@ from app.session_helpers import save_session_summary
 
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "save_session",
-        "description": "在对话自然结束、用户表示先到这里时调用，生成摘要并结束当前会话。",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-        },
+    "name": "save_session",
+    "description": "在对话自然结束、用户表示先到这里时调用，生成摘要并结束当前会话。",
+    "parameters": {
+        "type": "object",
+        "properties": {},
     },
 }
 

@@ -1,5 +1,6 @@
 ---
 name: emotion_naming
+version: 2.0
 display_name: 情绪命名
 category: emotion_regulation
 trigger: 用户表达模糊的情绪（"不太好""心里不舒服"），需要帮助识别和命名具体情绪
@@ -9,6 +10,14 @@ estimated_turns: 4-6
 estimated_duration: 5-8min
 contraindications:
   - risk_category: crisis
+cooldown_hours: 24
+follow_up_rules:
+  - 下次优先询问用户现在能否更快识别自己是焦虑、委屈还是愤怒
+  - 若用户仍然只能说“不太好”，先从身体线索重新切入
+completion_signals:
+  - 我好像更清楚自己是在焦虑
+  - 这样说出来更具体了
+  - 原来不只是难受，是委屈
 ---
 
 ## 目标

@@ -4,23 +4,75 @@ import json
 
 TOOL_DEFINITION = {
     "type": "function",
-    "function": {
-        "name": "render_card",
-        "description": "将结构化的练习、清单或书写任务转换为前端可渲染的 card_data。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "card_type": {"type": "string", "enum": ["guided_exercise", "journal", "checklist", "referral"]},
-                "title": {"type": "string"},
-                "description": {"type": "string"},
-                "steps": {"type": "array"},
-                "fields": {"type": "array"},
-                "items": {"type": "array"},
-                "resources": {"type": "array"},
-                "footer": {"type": "string"},
+    "name": "render_card",
+    "description": "将结构化的练习、清单或书写任务转换为前端可渲染的 card_data。",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "card_type": {"type": "string", "enum": ["guided_exercise", "journal", "checklist", "referral"]},
+            "title": {"type": "string"},
+            "description": {"type": "string"},
+            "steps": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "instruction": {"type": "string"},
+                        "duration": {"type": "integer"},
+                        "phase": {"type": "string"},
+                    },
+                    "required": ["instruction"],
+                },
             },
-            "required": ["card_type", "title"],
+            "fields": {
+                "type": "array",
+                "items": {
+                    "anyOf": [
+                        {"type": "string"},
+                        {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string"},
+                                "placeholder": {"type": "string"},
+                            },
+                            "required": ["label"],
+                        },
+                    ],
+                },
+            },
+            "items": {
+                "type": "array",
+                "items": {
+                    "anyOf": [
+                        {"type": "string"},
+                        {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string"},
+                                "checked": {"type": "boolean"},
+                            },
+                            "required": ["label"],
+                        },
+                    ],
+                },
+            },
+            "resources": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "url": {"type": "string"},
+                        "phone": {"type": "string"},
+                        "action": {"type": "string"},
+                    },
+                    "required": ["name"],
+                },
+            },
+            "footer": {"type": "string"},
         },
+        "required": ["card_type", "title"],
     },
 }
 
