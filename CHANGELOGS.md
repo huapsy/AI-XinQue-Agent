@@ -103,3 +103,80 @@
 - 提交 1：`Sprint 19-30` 的运行时、状态与 Responses 迁移主线
 - 提交 2：`Sprint 31-34` 的 structured outputs / skills / tool runtime / Responses-first 架构
 - 提交 3：`Sprint 35` 的 Prompt 指南落地、手测清单与手测中修掉的运行时问题
+
+---
+
+## 2026-03-30（架构优化补记）
+
+### 总览
+
+本条目补记本次围绕 Limbic 参考材料进行的架构审核与优化落地，重点是将“可执行约束”从口头建议落到架构文档中的结构化接口与运行时规则，作为后续 `product-plan-v3` 与实现拆分的输入基线。
+
+### 1. Limbic 交叉审核结果已沉淀为 Appendix
+
+- 已在 [`xinque-agent-counsellor-harness-architecture-v1.md`](/E:/AI_XinQue_Agent/docs/design/xinque-agent-counsellor-harness-architecture-v1.md) 新增 **Appendix A**。
+- Appendix A 汇总了基于 `docs/reference/Limbic/` 全量材料的 10 项维度审核：
+  - Flow state
+  - formulate 结构化输入
+  - recommender 回探回路
+  - 匹配强度与阈值
+  - direct intent 快捷路径
+  - 理解信号来源标注
+  - KnowledgeBank 检索注入
+  - output safety regenerate loop
+  - phase schema 路由字段分类
+  - 心雀正面差异保留项
+
+### 2. FlowModule 增补全局会话状态定义
+
+- 在文档 `§5.4.2 FlowModule` 中新增 `SessionFlowState` 草案，明确：
+  - `conversation_phase`
+  - `transition_reason`
+  - `last_prompt_generator`
+  - `formulation_readiness`
+  - `structured_items`
+  - `needs_more_exploration`
+  - `explore_more_targets`
+  - `chosen_intervention`
+  - `intervention_status`
+- 明确该 state 由 Harness 维护，工具返回与路由结果写入统一状态对象，不由模型直接修改。
+
+### 3. `formulate` schema 补强（P2）
+
+- 在 `formulate` 参数中新增可选 `structured_items`（`asking_label + user_utterance`），用于保留“标签 + 原始用户表述”。
+- 在返回对象中为 `emotions`、`cognitive_patterns` 条目增加 `detection_source` 预留位：
+  - `llm_extraction | classifier | rule`
+- 补充约束：`structured_items` 应累积写入 `SessionFlowState`，为后续子模型接入预留兼容路径。
+
+### 4. `match_intervention` schema 补强（P3）
+
+- 在 plan 对象中新增 `match_strength`（`high | medium | low`）。
+- 在匹配为空或候选强度过低时，新增回探信号返回：
+  - `needs_more_exploration`
+  - `explore_more_targets`
+- 明确该信号应写入 `SessionFlowState` 并驱动 Flow 回到 P2 持续探索。
+
+### 5. 输出安全回路增强
+
+- 在文档 `§5.3.2 OutputSafetyModule` 中补充 `output_safety_retry` 回路：
+  - 安全失败后可在上限内重试生成（建议最大 2 次）
+  - 每次重试注入 `[SAFETY_FEEDBACK]`
+  - 超过上限时走 fallback safe response + 审计记录 + 可选人工标记
+
+### 6. 阶段 schema 与路由规则显式化
+
+- 在文档 `§7.4` 对 P1-P4 schema 增加字段角色标注：
+  - `routing_field`
+  - `content_field`
+- 每个阶段补充 Flow 路由规则，减少“字段含义靠约定”的歧义。
+
+### 7. Direct Intent 快捷路径补齐
+
+- 在文档 `§6.2` 与 `§5.8.1 / §7.5` 中补充 direct intent 方案：
+  - 新增 `resolve_direct_intent`（建议）作为 P1 快捷路径 tool
+  - 支持用户明确提出干预需求时从 P1 直接进入 P4
+
+### 8. 对当前代码实现的含义
+
+- 本次主要是 **架构与契约层优化落地**（文档层），用于约束后续实现，不是一次性功能代码重构。
+- 对 `app/` 代码的直接影响是提供了下一步实施的明确接口目标（Flow state、P2/P3 schema、safety retry、direct intent tool）。
