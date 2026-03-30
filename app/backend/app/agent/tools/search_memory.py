@@ -6,9 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.encryption_helpers import decrypt_text
-from app.memory_helpers import score_memories_by_query
+from app.memory_retrieval import retrieve_memories
 from app.models.tables import EpisodicMemory
-from app.time_freshness import sort_memories_with_time_freshness
 
 TOOL_DEFINITION = {
     "type": "function",
@@ -51,7 +50,7 @@ async def execute(user_id: str, arguments: dict, db: AsyncSession) -> str:
         if not topic or memory.topic == topic
     ]
 
-    ranked = sort_memories_with_time_freshness(score_memories_by_query(query, payload))[:top_k]
+    ranked = retrieve_memories(query, payload, top_k)
     fallback_strategy = None
     if not ranked and topic:
         fallback_payload = [
@@ -64,7 +63,7 @@ async def execute(user_id: str, arguments: dict, db: AsyncSession) -> str:
             }
             for memory in memories
         ]
-        ranked = sort_memories_with_time_freshness(score_memories_by_query(query, fallback_payload))[:top_k]
+        ranked = retrieve_memories(query, fallback_payload, top_k)
         if ranked:
             fallback_strategy = "drop_topic_filter"
 

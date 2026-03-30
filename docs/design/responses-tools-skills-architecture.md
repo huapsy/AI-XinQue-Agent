@@ -4,7 +4,7 @@
 
 本文定义心雀在 `Responses-first` 架构下的运行时分层，并明确项目内部 `skills` 与 OpenAI 官方 `Skills` 的区别、映射与边界。
 
-这是一份长期设计文档，服从 [`product-plan-v2.md`](/E:/AI_XinQue_Agent/docs/design/product-plan-v2.md)。
+这是一份长期设计文档，服从 [`product-plan-v2.1.md`](./product-plan-v2.1.md)（v2 历史见 [`product-plan-v2.md`](./product-plan-v2.md)）。
 
 ## 1. Responses-first Runtime Layers
 

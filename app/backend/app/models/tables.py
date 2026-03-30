@@ -173,3 +173,11 @@ class SessionStateHistory(Base):
     change_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     change_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class CombinedEvaluation(Base):
+    __tablename__ = "combined_evaluations"
+
+    session_id: Mapped[str] = mapped_column(Text, ForeignKey("sessions.session_id"), primary_key=True)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

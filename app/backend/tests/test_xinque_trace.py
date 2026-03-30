@@ -113,6 +113,9 @@ class XinqueTraceTests(unittest.TestCase):
         self.assertIn("instructions", result["llm_trace"]["runtime_layers"])
         self.assertEqual(result["llm_trace"]["phase_timeline"][0]["phase"], "working_contract")
         self.assertEqual(result["llm_trace"]["phase_timeline"][1]["phase"], "working_context")
+        self.assertTrue(
+            any(item["phase"] == "phase_fields_normalized" for item in result["llm_trace"]["phase_timeline"])
+        )
         self.assertEqual(result["llm_trace"]["phase_timeline"][-1]["phase"], "final_answer")
         self.assertIn("semantic_summary", result["llm_trace"]["persisted_session_state"])
         self.assertGreaterEqual(result["llm_trace"]["latency_ms"], 0)
@@ -335,6 +338,121 @@ class XinqueTraceTests(unittest.TestCase):
 
         self.assertIn("persisted_session_state", result["llm_trace"])
         self.assertIn("current_focus", result["llm_trace"]["persisted_session_state"])
+
+    def test_chat_injects_active_phase_into_prompt_and_trace(self) -> None:
+        response = SimpleNamespace(
+            id="resp-1",
+            output=[_response_message("继续说吧。", phase="final_answer")],
+            usage=SimpleNamespace(input_tokens=3, output_tokens=4, total_tokens=7),
+        )
+        create = AsyncMock(return_value=response)
+        client = SimpleNamespace(responses=SimpleNamespace(create=create))
+
+        async def run_test():
+            with patch.dict("os.environ", {"AZURE_OPENAI_DEPLOYMENT": "test-deployment"}, clear=False):
+                return await xinque.chat(
+                    client=client,
+                    history=[],
+                    user_message="我继续说刚才那个问题",
+                    user_id="user-1",
+                    session_id="session-1",
+                    db=AsyncMock(),
+                    trace_collector=[],
+                    persisted_session_state={
+                        "current_focus": {"summary": "旧焦点"},
+                        "semantic_summary": {"primary_themes": ["工作压力"]},
+                        "stable_state": {"active_phase": "p2_explorer"},
+                    },
+                )
+
+        result = __import__("asyncio").run(run_test())
+
+        self.assertEqual(
+            result["llm_trace"]["persisted_session_state"]["stable_state"]["active_phase"],
+            "p2_explorer",
+        )
+        self.assertEqual(
+            result["llm_trace"]["persisted_session_state"]["stable_state"]["phase_transition_reason"],
+            "phase_unchanged",
+        )
+        self.assertTrue(
+            any(item["phase"] == "phase_profile_selected" for item in result["llm_trace"]["phase_timeline"])
+        )
+        kwargs = create.await_args.kwargs
+        self.assertIn("P2 子Agent", kwargs["instructions"])
+
+    def test_chat_routes_direct_intent_to_p3_not_p4_when_no_active_skill(self) -> None:
+        response = SimpleNamespace(
+            id="resp-1",
+            output=[_response_message("可以，我更想直接试试方法。", phase="final_answer")],
+            usage=SimpleNamespace(input_tokens=3, output_tokens=4, total_tokens=7),
+        )
+        create = AsyncMock(return_value=response)
+        client = SimpleNamespace(responses=SimpleNamespace(create=create))
+
+        async def run_test():
+            with patch.dict("os.environ", {"AZURE_OPENAI_DEPLOYMENT": "test-deployment"}, clear=False):
+                return await xinque.chat(
+                    client=client,
+                    history=[],
+                    user_message="有没有什么方法可以直接试试",
+                    user_id="user-1",
+                    session_id="session-1",
+                    db=AsyncMock(),
+                    trace_collector=[],
+                )
+
+        result = __import__("asyncio").run(run_test())
+
+        self.assertEqual(
+            result["llm_trace"]["persisted_session_state"]["stable_state"]["active_phase"],
+            "p3_recommender",
+        )
+        self.assertEqual(
+            result["llm_trace"]["persisted_session_state"]["stable_state"]["phase_transition_reason"],
+            "intent_detected",
+        )
+
+    def test_chat_records_tool_blocked_by_phase_in_trace(self) -> None:
+        first = SimpleNamespace(
+            id="resp-1",
+            output=[_response_function_call("match_intervention", "{}")],
+            usage=None,
+        )
+        second = SimpleNamespace(
+            id="resp-2",
+            output=[_response_message("我们先继续把问题说清楚。", phase="final_answer")],
+            usage=SimpleNamespace(input_tokens=4, output_tokens=5, total_tokens=9),
+        )
+        create = AsyncMock(side_effect=[first, second])
+        client = SimpleNamespace(responses=SimpleNamespace(create=create))
+
+        async def run_test():
+            with patch.dict("os.environ", {"AZURE_OPENAI_DEPLOYMENT": "test-deployment"}, clear=False):
+                db = AsyncMock()
+                db.execute = AsyncMock(return_value=SimpleNamespace(
+                    scalar_one_or_none=lambda: None
+                ))
+                return await xinque.chat(
+                    client=client,
+                    history=[],
+                    user_message="我最近总在开会前发慌",
+                    user_id="user-1",
+                    session_id="session-1",
+                    db=db,
+                    trace_collector=[],
+                    persisted_session_state={
+                        "current_focus": {"summary": "旧焦点"},
+                        "semantic_summary": {"primary_themes": ["工作压力"]},
+                        "stable_state": {"active_phase": "p1_listener"},
+                    },
+                )
+
+        result = __import__("asyncio").run(run_test())
+
+        self.assertTrue(
+            any(item["phase"] == "tool_blocked_by_phase" for item in result["llm_trace"]["phase_timeline"])
+        )
 
     def test_chat_respects_store_environment_flag(self) -> None:
         response = SimpleNamespace(

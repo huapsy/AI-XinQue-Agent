@@ -3,6 +3,7 @@
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI
@@ -15,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.agent import xinque
-from app.admin_metrics_helpers import build_admin_metrics_payload
+from app.admin_metrics_helpers import build_admin_metrics_payload, filter_sessions_for_admin_metrics
 from app.alignment import detect_alignment_signal
 from app.chat_service import (
     create_session_for_user,
@@ -24,7 +25,9 @@ from app.chat_service import (
     load_previous_response_id,
     load_previous_session_state,
 )
+from app.combined_evaluation_store import list_combined_evaluations, save_combined_evaluation
 from app.encryption_helpers import decrypt_text, encrypt_text, require_encryption_key
+from app.evaluation_helpers import build_combined_evaluation_payload, run_llm_judge
 from app.memory_helpers import maybe_store_episodic_memory
 from app.models.database import engine, get_session
 from app.models.tables import Base, EpisodicMemory, Intervention, Message, Session, TraceRecord, User, UserProfile
@@ -39,11 +42,16 @@ from app.safety.output_guard import check_output
 from app.session_helpers import save_session_summary
 from app.session_state_store import (
     load_session_state,
-    load_session_state_history,
+    load_session_state_history_filtered,
     load_session_state_with_meta,
     save_session_state_with_history,
 )
-from app.trace_helpers import serialize_phase_timeline, serialize_trace_records
+from app.trace_helpers import (
+    build_phase_flow_report,
+    build_session_analysis_payload,
+    serialize_phase_timeline,
+    serialize_trace_records,
+)
 from app.trace_sink import DatabaseTraceSink
 from app.mood_trend_helpers import build_mood_trend_payload
 
@@ -409,20 +417,92 @@ async def get_session_state(
 async def get_session_state_history(
     session_id: str,
     db: AsyncSession = Depends(get_session),
+    limit: int = 20,
+    before_version: int | None = None,
+    change_reason: str | None = None,
 ):
     """读取会话状态历史。"""
-    return await load_session_state_history(db, session_id)
+    return await load_session_state_history_filtered(
+        db,
+        session_id,
+        limit=limit,
+        before_version=before_version,
+        change_reason=change_reason,
+    )
 
 
 @app.get("/api/sessions/{session_id}/timeline")
 async def get_session_timeline(
     session_id: str,
     db: AsyncSession = Depends(get_session),
+    limit: int = 20,
+    before_turn: int | None = None,
+    phase: str | None = None,
 ):
     """读取会话 phase timeline。"""
     result = await db.execute(TraceRecord.select_by_session(session_id))
     traces = result.scalars().all()
-    return serialize_phase_timeline(traces)
+    return serialize_phase_timeline(
+        traces,
+        limit=limit,
+        before_turn=before_turn,
+        phase=phase,
+    )
+
+
+@app.get("/api/sessions/{session_id}/analysis")
+async def get_session_analysis(
+    session_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """读取会话级聚合分析载荷。"""
+    state_payload = await load_session_state_history_filtered(db, session_id, limit=5)
+    state_history = state_payload.get("history", [])
+    result = await db.execute(TraceRecord.select_by_session(session_id))
+    traces = result.scalars().all()
+    return build_session_analysis_payload(
+        session_id=session_id,
+        state_history=state_history,
+        traces=traces,
+    )
+
+
+@app.get("/api/sessions/{session_id}/phase-flow")
+async def get_session_phase_flow(
+    session_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """读取会话级 phase flow report。"""
+    result = await db.execute(TraceRecord.select_by_session(session_id))
+    traces = result.scalars().all()
+    return {
+        "session_id": session_id,
+        "phase_flow": build_phase_flow_report(traces),
+    }
+
+
+@app.get("/api/sessions/{session_id}/combined-evaluation")
+async def get_session_combined_evaluation(
+    session_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """读取会话级联合评估载荷。"""
+    result = await db.execute(TraceRecord.select_by_session(session_id))
+    traces = result.scalars().all()
+    phase_flow = build_phase_flow_report(traces)
+    messages = await load_history_messages(db, session_id)
+    judge_result = await run_llm_judge(
+        client=client,
+        model=os.environ.get("XINQUE_JUDGE_MODEL", os.environ.get("AZURE_OPENAI_DEPLOYMENT", "")),
+        session_id=session_id,
+        messages=messages,
+    )
+    payload = build_combined_evaluation_payload(
+        judge_result=judge_result,
+        phase_flow_report=phase_flow,
+    )
+    await save_combined_evaluation(db, session_id, payload)
+    return payload
 
 
 @app.get("/api/users/{client_id}/sessions")
@@ -488,16 +568,46 @@ async def get_mood_trend(
 @app.get("/api/admin/metrics")
 async def get_admin_metrics(
     db: AsyncSession = Depends(get_session),
+    recent_sessions: int | None = None,
+    since_days: int | None = None,
+    now: datetime | None = None,
 ):
     """获取匿名汇总指标。"""
-    sessions = (await db.execute(select(Session))).scalars().all()
+    all_sessions = (await db.execute(select(Session))).scalars().all()
     interventions = (await db.execute(select(Intervention))).scalars().all()
     traces = (await db.execute(select(TraceRecord))).scalars().all()
     message_rows = (await db.execute(select(Message.session_id))).scalars().all()
+    combined_evaluations = await list_combined_evaluations(db)
+    sessions = filter_sessions_for_admin_metrics(
+        all_sessions,
+        recent_sessions=recent_sessions,
+        since_days=since_days,
+        now=now,
+    )
+    scoped_session_ids = {session.session_id for session in sessions}
+    interventions = [
+        item for item in interventions
+        if getattr(item, "session_id", None) in scoped_session_ids
+    ]
+    traces = [
+        trace for trace in traces
+        if getattr(trace, "session_id", None) in scoped_session_ids
+    ]
     message_counts: dict[str, int] = {}
     for session_id in message_rows:
-        message_counts[session_id] = message_counts.get(session_id, 0) + 1
-    return build_admin_metrics_payload(sessions, interventions, traces, message_counts)
+        if session_id in scoped_session_ids:
+            message_counts[session_id] = message_counts.get(session_id, 0) + 1
+    combined_evaluations = [
+        payload for payload in combined_evaluations
+        if payload.get("session_id") in scoped_session_ids
+    ]
+    return build_admin_metrics_payload(
+        sessions,
+        interventions,
+        traces,
+        message_counts,
+        combined_evaluations=combined_evaluations,
+    )
 
 
 class MoodRequest(BaseModel):

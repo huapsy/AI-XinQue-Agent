@@ -37,3 +37,20 @@ def get_cors_origins() -> list[str]:
 def get_responses_store_enabled() -> bool:
     """读取 Responses store 开关。"""
     return _env_flag("XINQUE_RESPONSES_STORE", True)
+
+
+def get_otel_enabled() -> bool:
+    """读取 OTel 导出开关。"""
+    return _env_flag("XINQUE_OTEL_ENABLED", False)
+
+
+def get_otel_exporter_endpoint() -> str | None:
+    """读取 OTel exporter endpoint。"""
+    raw = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    return raw or None
+
+
+def get_encryption_key_version() -> str:
+    """读取当前写入使用的加密密钥版本。"""
+    raw = os.getenv("XINQUE_ENCRYPTION_KEY_VERSION", "").strip()
+    return raw or "v1"

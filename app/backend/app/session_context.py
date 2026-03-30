@@ -143,6 +143,16 @@ def build_persisted_session_state(context: dict[str, Any]) -> dict[str, Any]:
             "profile_snapshot": stable_state.get("profile_snapshot", {}),
             "formulation": stable_state.get("formulation", {}),
             "recent_intervention": stable_state.get("recent_intervention", {}),
+            "active_phase": stable_state.get("active_phase"),
+            "phase_transition_reason": stable_state.get("phase_transition_reason"),
+            "intent": stable_state.get("intent", False),
+            "explore": stable_state.get("explore", False),
+            "asking": stable_state.get("asking"),
+            "formulation_confirmed": stable_state.get("formulation_confirmed", False),
+            "needs_more_exploration": stable_state.get("needs_more_exploration", False),
+            "chosen_intervention": stable_state.get("chosen_intervention"),
+            "intervention_complete": stable_state.get("intervention_complete", False),
+            "active_skill": stable_state.get("active_skill", {}),
             "last_session_summary": stable_state.get("last_session_summary"),
         },
     }
@@ -155,6 +165,16 @@ def render_layered_context_message(context: dict[str, Any]) -> str:
     profile = stable_state.get("profile_snapshot", {})
     formulation = stable_state.get("formulation", {})
     intervention = stable_state.get("recent_intervention", {})
+    active_phase = stable_state.get("active_phase")
+    phase_transition_reason = stable_state.get("phase_transition_reason")
+    intent = stable_state.get("intent", False)
+    explore = stable_state.get("explore", False)
+    asking = stable_state.get("asking")
+    formulation_confirmed = stable_state.get("formulation_confirmed", False)
+    needs_more_exploration = stable_state.get("needs_more_exploration", False)
+    chosen_intervention = stable_state.get("chosen_intervention")
+    intervention_complete = stable_state.get("intervention_complete", False)
+    active_skill = stable_state.get("active_skill", {})
     summary = context.get("semantic_summary", {})
     retrieval = context.get("retrieval_context", {})
 
@@ -173,7 +193,17 @@ def render_layered_context_message(context: dict[str, Any]) -> str:
             f"formulation={formulation.get('primary_issue') or '待形成'}"
             f"/{formulation.get('readiness') or 'unknown'}；"
             f"最近干预={intervention.get('skill_name') or '无'}"
-            f"（{intervention.get('relative_time') or '时间未知'}）"
+            f"（{intervention.get('relative_time') or '时间未知'}）；"
+            f"active_phase={active_phase or '无'}；"
+            f"phase_transition_reason={phase_transition_reason or '无'}；"
+            f"intent={intent}；"
+            f"explore={explore}；"
+            f"asking={asking or '无'}；"
+            f"formulation_confirmed={formulation_confirmed}；"
+            f"needs_more_exploration={needs_more_exploration}；"
+            f"chosen_intervention={chosen_intervention or '无'}；"
+            f"intervention_complete={intervention_complete}；"
+            f"active_skill={active_skill.get('skill_name') or '无'}"
         ),
         (
             "语义摘要："
@@ -216,9 +246,35 @@ async def load_runtime_session_state(
         "profile_snapshot": {},
         "formulation": {},
         "recent_intervention": {},
+        "active_phase": None,
+        "phase_transition_reason": None,
+        "intent": False,
+        "explore": False,
+        "asking": None,
+        "formulation_confirmed": False,
+        "needs_more_exploration": False,
+        "chosen_intervention": None,
+        "intervention_complete": False,
+        "active_skill": {},
         "last_session_summary": None,
     }
-    for key in ("runtime_time_context", "profile_snapshot", "formulation", "recent_intervention", "last_session_summary"):
+    for key in (
+        "runtime_time_context",
+        "profile_snapshot",
+        "formulation",
+        "recent_intervention",
+        "active_phase",
+        "phase_transition_reason",
+        "intent",
+        "explore",
+        "asking",
+        "formulation_confirmed",
+        "needs_more_exploration",
+        "chosen_intervention",
+        "intervention_complete",
+        "active_skill",
+        "last_session_summary",
+    ):
         if key in persisted_stable:
             stable_state[key] = persisted_stable[key]
 

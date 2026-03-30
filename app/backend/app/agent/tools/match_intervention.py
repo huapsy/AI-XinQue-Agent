@@ -64,6 +64,8 @@ def _match_skills(
 
     recent_interventions = recent_interventions or []
     scored: list[tuple[int, dict]] = []
+    candidate_names = {skill.get("name", "") for skill in skills}
+    candidate_categories = {skill.get("category", "") for skill in skills if skill.get("category")}
 
     for skill in skills:
         name = skill.get("name", "")
@@ -124,6 +126,8 @@ def _match_skills(
         vague_keywords = {"不好", "不舒服", "难受", "烦", "不太好"}
         if emotion_names & vague_keywords and name == "emotion_naming":
             score += 7
+        if emotion_names & anxiety_keywords and name == "emotion_naming":
+            score += 3
 
         # 低落 + 非严重 → 三件好事
         if emotion_names & low_mood_keywords and name == "three_good_things":
@@ -140,7 +144,17 @@ def _match_skills(
 
     # 按分数降序，取前 2
     scored.sort(key=lambda x: -x[0])
-    return [s[1] for s in scored[:2]]
+    selected = [dict(item[1]) for item in scored[:2]]
+    for skill in selected:
+        reasons = _selection_cooling_reasons(skill, recent_interventions, candidate_names, candidate_categories)
+        skill["cooling_applied"] = bool(reasons)
+        skill["cooling_reasons"] = reasons
+        skill["continuity_reason"] = (
+            "alternative_due_to_recent_cooling"
+            if reasons and all(getattr(intervention, "skill_name", None) != skill.get("name") for intervention in recent_interventions)
+            else "direct_match"
+        )
+    return selected
 
 
 def _freshness_adjustment(skill: dict, recent_interventions: list["Intervention"]) -> int:
@@ -162,8 +176,49 @@ def _freshness_adjustment(skill: dict, recent_interventions: list["Intervention"
             adjustment -= 6
         elif category and _skill_name_category(intervention.skill_name) == category:
             adjustment -= 2
+        if getattr(intervention, "user_feedback", None) == "unhelpful":
+            if getattr(intervention, "skill_name", None) == name:
+                adjustment -= 6
+            elif category and _skill_name_category(intervention.skill_name) == category:
+                adjustment -= 8
 
     return adjustment
+
+
+def _selection_cooling_reasons(
+    selected_skill: dict,
+    recent_interventions: list["Intervention"],
+    candidate_names: set[str],
+    candidate_categories: set[str],
+) -> list[str]:
+    """返回当前入选 skill 的最小冷却解释。"""
+    current = datetime.now().astimezone()
+    selected_name = selected_skill.get("name", "")
+    reasons: list[str] = []
+
+    for intervention in recent_interventions:
+        started_at = getattr(intervention, "started_at", None)
+        if started_at is None:
+            continue
+        cooldown_hours = int(selected_skill.get("cooldown_hours", 48) or 48)
+        if current - started_at > timedelta(hours=cooldown_hours):
+            continue
+
+        recent_name = getattr(intervention, "skill_name", None)
+        recent_category = _skill_name_category(recent_name)
+
+        if recent_name in candidate_names and "same_skill_recent" not in reasons:
+            if recent_name != selected_name:
+                reasons.append("same_skill_recent")
+
+        if recent_category and recent_category in candidate_categories and "same_category_recent" not in reasons:
+            if recent_category == selected_skill.get("category"):
+                reasons.append("same_category_recent")
+
+        if getattr(intervention, "user_feedback", None) == "unhelpful" and "recent_unhelpful_feedback" not in reasons:
+            reasons.append("recent_unhelpful_feedback")
+
+    return reasons
 
 
 def _skill_name_category(skill_name: str | None) -> str | None:

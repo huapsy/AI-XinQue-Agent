@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.phase_profiles import get_phase_profile
 from app.models.tables import CaseFormulation, Intervention
 from app.responses_helpers import build_function_call_output, resolve_function_call_id
 from app.time_context import format_relative_time
@@ -46,6 +47,22 @@ def has_retry_signal(user_message: str) -> bool:
     signals = (
         "再做一次", "重新来一遍", "再来一次", "再带我做", "重做", "再练一次",
         "再试一次", "再做那个",
+    )
+    return any(signal in user_message for signal in signals)
+
+
+def has_positive_sentiment_signal(user_message: str) -> bool:
+    signals = (
+        "开心", "高兴", "很高兴", "挺开心", "挺高兴", "轻松", "满足",
+        "自豪", "兴奋", "踏实", "舒服", "成就感", "被认可", "被表扬",
+    )
+    return any(signal in user_message for signal in signals)
+
+
+def has_negative_dominant_signal(user_message: str) -> bool:
+    signals = (
+        "焦虑", "难受", "痛苦", "撑不住", "崩溃", "压力很大", "害怕",
+        "烦", "低落", "沮丧", "失眠", "胸闷", "想哭",
     )
     return any(signal in user_message for signal in signals)
 
@@ -118,6 +135,38 @@ def tool_state_mentions_skill(tool_state: list[dict] | None, tool_name: str, ski
     return False
 
 
+def resolve_active_skill_state(
+    previous_active_skill: dict | None,
+    tool_state: list[dict] | None,
+    user_message: str,
+) -> dict:
+    """根据上一轮状态、本轮 tool 结果和当前用户消息，推导新的 active skill。"""
+    active_skill = dict(previous_active_skill or {})
+    if active_skill and has_new_method_signal(user_message):
+        active_skill = {}
+
+    for item in tool_state or []:
+        if item.get("status") != "ok":
+            continue
+        payload = item.get("payload")
+        if not isinstance(payload, dict):
+            continue
+
+        if item.get("tool") == "load_skill" and payload.get("skill_name"):
+            active_skill = {
+                "skill_name": payload.get("skill_name"),
+                "display_name": payload.get("display_name"),
+                "completion_signals": payload.get("completion_signals", []),
+                "activated_at": item.get("recorded_at"),
+            }
+        elif item.get("tool") == "record_outcome":
+            recorded_skill_name = payload.get("skill_name") or (item.get("arguments") or {}).get("skill_name")
+            if active_skill and recorded_skill_name == active_skill.get("skill_name"):
+                active_skill = {}
+
+    return active_skill
+
+
 def append_tool_state(
     tool_state: list[dict],
     *,
@@ -151,8 +200,44 @@ async def preflight_tool_call(
     user_message: str,
     db: AsyncSession,
     tool_state: list[dict] | None = None,
+    active_phase: str | None = None,
+    active_skill: dict | None = None,
 ) -> str | None:
     """高依赖工具的统一前置校验。"""
+    if active_phase:
+        allowed_tools = set(get_phase_profile(active_phase).allowed_tools)
+        if tool_name not in allowed_tools:
+            return json.dumps({
+                "status": "blocked",
+                "tool": tool_name,
+                "reason": "phase_tool_not_allowed",
+                "message": f"当前阶段 {active_phase} 不应调用 {tool_name}，应优先遵守该阶段子Agent的工具边界。",
+                "active_phase": active_phase,
+                "allowed_tools": sorted(allowed_tools),
+            }, ensure_ascii=False)
+
+    effective_active_skill = resolve_active_skill_state(active_skill, tool_state, user_message)
+    active_skill_name = str(effective_active_skill.get("skill_name") or "")
+    if active_skill_name and not has_new_method_signal(user_message):
+        if tool_name == "match_intervention":
+            return json.dumps({
+                "status": "blocked",
+                "tool": tool_name,
+                "reason": "active_skill_in_progress",
+                "message": f"当前已有正在执行的 skill（{active_skill_name}），未完成前应优先继续该 skill，除非用户明确要求切换方法。",
+                "active_skill": active_skill_name,
+            }, ensure_ascii=False)
+        if tool_name == "load_skill":
+            requested_skill_name = str(arguments.get("skill_name", ""))
+            if requested_skill_name != active_skill_name:
+                return json.dumps({
+                    "status": "blocked",
+                    "tool": tool_name,
+                    "reason": "active_skill_in_progress",
+                    "message": f"当前已有正在执行的 skill（{active_skill_name}），未完成前不应切换到新的 skill，除非用户明确要求换方法。",
+                    "active_skill": active_skill_name,
+                }, ensure_ascii=False)
+
     if tool_name == "referral" and not arguments.get("urgency"):
         return json.dumps({
             "status": "blocked",
@@ -173,6 +258,15 @@ async def preflight_tool_call(
 
     if tool_name == "load_skill":
         skill_name = str(arguments.get("skill_name", ""))
+        if skill_name == "positive_experience_consolidation":
+            if has_positive_sentiment_signal(user_message) and not has_negative_dominant_signal(user_message):
+                return None
+            return json.dumps({
+                "status": "blocked",
+                "tool": tool_name,
+                "reason": "positive_sentiment_not_clear",
+                "message": "只有当用户当前明确处于积极情绪路径，且没有明显负面情绪主导时，才应直接进入积极体验巩固 skill。",
+            }, ensure_ascii=False)
         accepted_now = has_acceptance_signal(user_message)
         matched_in_context = tool_state_mentions_skill(tool_state, "match_intervention", skill_name)
         if not accepted_now and not matched_in_context:
@@ -267,6 +361,8 @@ async def execute_tool_runtime_call(
     execute_tool,
     preflight_tool,
     trace_collector: list[dict] | None = None,
+    active_phase: str | None = None,
+    active_skill: dict | None = None,
 ) -> tuple[dict, dict, dict | None]:
     """执行单次 tool call，统一处理 guardrail、envelope、trace 与 tool state。"""
     started = time.perf_counter()
@@ -281,6 +377,8 @@ async def execute_tool_runtime_call(
             user_message=user_message,
             db=db,
             tool_state=tool_state,
+            active_phase=active_phase,
+            active_skill=active_skill,
         )
         if raw_result is None:
             raw_result = await execute_tool(

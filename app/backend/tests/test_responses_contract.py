@@ -54,6 +54,53 @@ class ResponsesContractTests(unittest.TestCase):
         self.assertIn("工作性假设", message)
         self.assertIn("对齐状态较低", message)
 
+    def test_working_contract_message_carries_phase_and_verification_rules(self) -> None:
+        message = build_working_contract_message(alignment_score=15, turn_number=3)
+
+        self.assertIn("phase", message)
+        self.assertIn("commentary", message)
+        self.assertIn("final answer", message)
+        self.assertIn("输出前验证", message)
+        self.assertIn("空结果或低置信度", message)
+        self.assertIn("intent", message)
+        self.assertIn("chosen_intervention", message)
+
+    def test_working_contract_message_carries_minimal_persona_summary(self) -> None:
+        message = build_working_contract_message(alignment_score=15, turn_number=3)
+
+        self.assertIn("心雀", message)
+        self.assertIn("心理支持助手", message)
+        self.assertIn("专业、温和、自然", message)
+        self.assertIn("不生硬、说教或教程化", message)
+
+    def test_working_contract_message_carries_stage_and_reply_structure_rules(self) -> None:
+        message = build_working_contract_message(alignment_score=15, turn_number=3)
+
+        self.assertIn("P1 不做表单式分流", message)
+        self.assertIn("P2 先探索和形成理解", message)
+        self.assertIn("接住、正常化、缩小问题、一个具体问题", message)
+        self.assertIn("默认每轮只问一个具体问题", message)
+
+    def test_working_contract_message_carries_active_skill_lock_rule(self) -> None:
+        message = build_working_contract_message(
+            alignment_score=15,
+            turn_number=4,
+            active_skill={"skill_name": "positive_experience_consolidation"},
+        )
+
+        self.assertIn("当前 active skill=positive_experience_consolidation", message)
+        self.assertIn("未完成前优先继续当前 skill", message)
+
+    def test_working_contract_message_carries_active_phase_rule(self) -> None:
+        message = build_working_contract_message(
+            alignment_score=15,
+            turn_number=4,
+            active_phase="p3_recommender",
+        )
+
+        self.assertIn("当前 active phase=p3_recommender", message)
+        self.assertIn("本轮优先遵守该阶段子Agent的行为边界", message)
+
     def test_stateless_runtime_input_drops_previous_response_id_dependency(self) -> None:
         effective_history = [{"role": "assistant", "content": "会话状态：当前目标=减轻压力"}]
 

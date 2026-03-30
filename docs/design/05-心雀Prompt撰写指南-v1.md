@@ -1,7 +1,7 @@
 # 心雀 Prompt 撰写指南 v1
 
 > 适用范围：心雀系统 Prompt、工具使用 Prompt、结构化输出 Prompt、评估 Prompt、运行时回合控制 Prompt。
-> 参考依据：`docs/reference/gpt-5.4/prompt-guidance-for-GPT-5.4.md`、`docs/reference/gpt-5.4/prompt-personalities.md`、`docs/design/product-plan-v2.md`。
+> 参考依据：`docs/reference/gpt-5.4/prompt-guidance-for-GPT-5.4.md`、`docs/reference/gpt-5.4/prompt-personalities.md`、`docs/design/product-plan-v2.1.md`。
 > 本文目标：把 GPT-5.4 的通用 prompt 原则，转化为心雀项目内可直接执行的写法、模板和检查清单。
 
 ---
@@ -23,7 +23,7 @@
 
 心雀 Prompt 设计应遵循以下优先级：
 
-1. `docs/design/product-plan-v2.md`
+1. `docs/design/product-plan-v2.1.md`
 2. 本文
 3. `docs/reference/gpt-5.4/prompt-guidance-for-GPT-5.4.md`
 4. `docs/reference/gpt-5.4/prompt-personalities.md`
@@ -31,7 +31,7 @@
 
 解释：
 
-- `product-plan-v2.md` 定义产品真实边界，包括人设、P1-P4 对话模型、安全红线、工具体系、记忆机制。
+- `product-plan-v2.1.md` 定义产品真实边界，包括人设、P1-P4 对话模型、安全红线、工具体系、记忆机制。
 - GPT-5.4 参考文档定义的是**Prompt 工程方法**，不是心雀业务规则。
 - 如果 GPT-5.4 的通用建议与心雀产品边界冲突，以心雀产品边界为准，再决定如何局部改写 Prompt。
 

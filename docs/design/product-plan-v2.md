@@ -1,5 +1,7 @@
 # AI心雀 - 产品方案 v2
 
+> **版本说明**：**AI 心理咨询智能体** 与 **Harness** 等当前产品定位见 **[`product-plan-v2.1.md`](./product-plan-v2.1.md)**。本文件为 v2 历史基线，保留存档；新迭代请改 v2.1。
+
 > 基于 Agent AI 趋势重设计：从"多 Agent 管道"演进为"单一 LLM + Tool Use 自主推理"架构。
 
 ---

@@ -7,6 +7,7 @@ import hashlib
 import os
 
 from cryptography.fernet import Fernet, InvalidToken
+from app.settings import get_encryption_key_version
 
 _PREFIX = "enc::"
 
@@ -29,19 +30,31 @@ def is_encrypted(value: str | None) -> bool:
     return bool(value and value.startswith(_PREFIX))
 
 
+def _build_cipher_prefix() -> str:
+    return f"{_PREFIX}{get_encryption_key_version()}::"
+
+
+def _extract_token(value: str) -> str:
+    payload = value[len(_PREFIX):]
+    if "::" in payload:
+        _version, token = payload.split("::", 1)
+        return token
+    return payload
+
+
 def encrypt_text(value: str | None) -> str:
     text = value or ""
     if not text or is_encrypted(text):
         return text
     token = _build_fernet().encrypt(text.encode("utf-8")).decode("utf-8")
-    return _PREFIX + token
+    return _build_cipher_prefix() + token
 
 
 def decrypt_text(value: str | None) -> str:
     text = value or ""
     if not is_encrypted(text):
         return text
-    token = text[len(_PREFIX):]
+    token = _extract_token(text)
     try:
         return _build_fernet().decrypt(token.encode("utf-8")).decode("utf-8")
     except InvalidToken:

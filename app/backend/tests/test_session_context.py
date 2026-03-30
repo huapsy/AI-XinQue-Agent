@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from app.session_context import build_layered_context
+from app.session_context import build_layered_context, build_persisted_session_state
 
 
 class SessionContextTests(unittest.TestCase):
@@ -131,6 +131,71 @@ class SessionContextTests(unittest.TestCase):
         self.assertIn("当前时间", message)
         self.assertIn("Asia/Shanghai", message)
         self.assertIn("昨天", message)
+
+    def test_persisted_session_state_keeps_active_skill(self) -> None:
+        context = build_layered_context(
+            history=[{"role": "user", "content": "我想继续刚才那个练习。"}],
+            user_message="我想继续刚才那个练习。",
+            stable_state={
+                "active_skill": {
+                    "skill_name": "positive_experience_consolidation",
+                    "display_name": "积极体验巩固",
+                },
+            },
+        )
+
+        persisted = build_persisted_session_state(context)
+
+        self.assertEqual(
+            persisted["stable_state"]["active_skill"]["skill_name"],
+            "positive_experience_consolidation",
+        )
+
+    def test_rendered_context_message_includes_active_skill(self) -> None:
+        context = build_layered_context(
+            history=[{"role": "user", "content": "我想继续刚才那个练习。"}],
+            user_message="我想继续刚才那个练习。",
+            stable_state={
+                "active_skill": {
+                    "skill_name": "positive_experience_consolidation",
+                    "display_name": "积极体验巩固",
+                },
+            },
+        )
+
+        from app.session_context import render_layered_context_message
+
+        message = render_layered_context_message(context)
+
+        self.assertIn("active_skill=positive_experience_consolidation", message)
+
+    def test_persisted_session_state_keeps_active_phase(self) -> None:
+        context = build_layered_context(
+            history=[{"role": "user", "content": "我继续说刚才那个问题。"}],
+            user_message="我继续说刚才那个问题。",
+            stable_state={
+                "active_phase": "p2_explorer",
+            },
+        )
+
+        persisted = build_persisted_session_state(context)
+
+        self.assertEqual(persisted["stable_state"]["active_phase"], "p2_explorer")
+
+    def test_rendered_context_message_includes_active_phase(self) -> None:
+        context = build_layered_context(
+            history=[{"role": "user", "content": "我继续说刚才那个问题。"}],
+            user_message="我继续说刚才那个问题。",
+            stable_state={
+                "active_phase": "p3_recommender",
+            },
+        )
+
+        from app.session_context import render_layered_context_message
+
+        message = render_layered_context_message(context)
+
+        self.assertIn("active_phase=p3_recommender", message)
 
 
 if __name__ == "__main__":

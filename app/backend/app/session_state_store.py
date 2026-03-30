@@ -42,12 +42,40 @@ async def load_session_state_with_meta(db: AsyncSession, session_id: str) -> dic
 
 async def load_session_state_history(db: AsyncSession, session_id: str) -> dict:
     """读取指定会话的状态历史。"""
-    result = await db.execute(
+    return await load_session_state_history_filtered(db, session_id)
+
+
+def _normalize_limit(limit: int | None, default: int = 20, maximum: int = 100) -> int:
+    if limit is None:
+        return default
+    return max(1, min(int(limit), maximum))
+
+
+async def load_session_state_history_filtered(
+    db: AsyncSession,
+    session_id: str,
+    *,
+    limit: int | None = None,
+    before_version: int | None = None,
+    change_reason: str | None = None,
+) -> dict:
+    """读取指定会话的状态历史，支持最小分页与过滤。"""
+    normalized_limit = _normalize_limit(limit)
+    statement = (
         select(SessionStateHistory)
         .where(SessionStateHistory.session_id == session_id)
         .order_by(SessionStateHistory.version.desc(), SessionStateHistory.created_at.desc())
     )
+    if before_version is not None:
+        statement = statement.where(SessionStateHistory.version < before_version)
+    if change_reason:
+        statement = statement.where(SessionStateHistory.change_reason == change_reason)
+
+    result = await db.execute(statement.limit(normalized_limit + 1))
     records = result.scalars().all()
+    visible_records = records[:normalized_limit]
+    has_more = len(records) > normalized_limit
+    next_before_version = visible_records[-1].version if has_more and visible_records else None
     return {
         "history": [
             {
@@ -59,8 +87,16 @@ async def load_session_state_history(db: AsyncSession, session_id: str) -> dict:
                 "change_summary": record.change_summary or {},
                 "created_at": record.created_at.isoformat() if getattr(record, "created_at", None) else None,
             }
-            for record in records
-        ]
+            for record in visible_records
+        ],
+        "meta": {
+            "limit": normalized_limit,
+            "returned": len(visible_records),
+            "before_version": before_version,
+            "change_reason": change_reason,
+            "has_more": has_more,
+            "next_before_version": next_before_version,
+        },
     }
 
 

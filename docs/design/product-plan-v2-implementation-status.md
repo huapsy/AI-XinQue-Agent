@@ -1,8 +1,8 @@
 # AI心雀 Plan v2 落地总览
 
-**更新时间**: 2026-03-29
-**基线文档**: [product-plan-v2.md](/E:/AI_XinQue_Agent/docs/design/product-plan-v2.md)
-**当前结论**: `Sprint 01-18` 已完成；`Sprint 19` 已完成 GPT-5.4 Prompt Contract 与运行时 guardrail 的主线收口；`Sprint 20` 已完成 Responses API 核心迁移；`Sprint 21` 已完成长会话语义压缩与状态治理的首轮落地；`Sprint 22` 已完成语义摘要持久化与 phase/state timeline 的最小持久化版本；`Sprint 23` 已完成独立会话状态模型；`Sprint 24` 已完成会话状态版本历史与摘要演进治理的首轮落地；`Sprint 25` 已完成状态读取接口与时间线查询；`Sprint 26` 已完成时间感知上下文的最小运行时版本；`Sprint 27` 已完成时间新鲜度驱动的最小 prompt / Tool 路由规则；`Sprint 28` 已完成时间新鲜度排序与多干预优先级治理；`Sprint 29` 已完成全面审查后的架构收口与主路径重构；`Sprint 30` 已完成 Responses API 链路与守门补强；`Sprint 31` 已完成原生 Structured Outputs 第一轮收口，覆盖 Judge、Summary 与 Formulation 主对象；`Sprint 32` 已完成 Skill manifest v2 与 registry 的首轮落地；`Sprint 33` 已完成 Tool 运行时平台化与契约统一；`Sprint 34` 已完成 Responses-first 会话状态与官方 Skills 对齐；`Sprint 35` 已完成心雀 Prompt 指南落地。`plan-v2` 的主线能力已落地，剩余差距主要集中在更高阶的生产运营与企业化能力。
+**更新时间**: 2026-03-30
+**基线文档**: [product-plan-v2.1.md](/E:/AI_XinQue_Agent/docs/design/product-plan-v2.1.md)（[`product-plan-v2.md`](./product-plan-v2.md) 为 v2 历史存档）
+**当前结论**: `Sprint 01-18` 已完成；`Sprint 19` 已完成 GPT-5.4 Prompt Contract 与运行时 guardrail 的主线收口；`Sprint 20` 已完成 Responses API 核心迁移；`Sprint 21` 已完成长会话语义压缩与状态治理的首轮落地；`Sprint 22` 已完成语义摘要持久化与 phase/state timeline 的最小持久化版本；`Sprint 23` 已完成独立会话状态模型；`Sprint 24` 已完成会话状态版本历史与摘要演进治理的首轮落地；`Sprint 25` 已完成状态读取接口与时间线查询；`Sprint 26` 已完成时间感知上下文的最小运行时版本；`Sprint 27` 已完成时间新鲜度驱动的最小 prompt / Tool 路由规则；`Sprint 28` 已完成时间新鲜度排序与多干预优先级治理；`Sprint 29` 已完成全面审查后的架构收口与主路径重构；`Sprint 30` 已完成 Responses API 链路与守门补强；`Sprint 31` 已完成原生 Structured Outputs 第一轮收口，覆盖 Judge、Summary 与 Formulation 主对象；`Sprint 32` 已完成 Skill manifest v2 与 registry 的首轮落地；`Sprint 33` 已完成 Tool 运行时平台化与契约统一；`Sprint 34` 已完成 Responses-first 会话状态与官方 Skills 对齐；`Sprint 35` 已完成心雀 Prompt 指南落地；`Sprint 36` 已完成 Prompt 体系升级的最小闭环；`Sprint 37` 已完成状态 / timeline 聚合分析的最小消费视图；`Sprint 38` 已完成跨 skill 冷却治理与最小排序解释的首轮落地；`Sprint 39` 已完成 retrieval backend 抽象与 local fallback 的首轮落地；`Sprint 40` 已完成 OTel 导出配置边界与启停策略的首轮落地；`Sprint 41` 已完成应用层加密版本化与历史兼容读取的最小闭环；`Sprint 42` 已完成咨询阶段纪律与四步回复微结构的首轮落地；`Sprint 43` 已完成积极情绪首触发 skill 路由的最小闭环；`Sprint 44` 已完成 `active_skill` 锁定；`Sprint 45` 已完成主 Agent 与四阶段子 Agent profile 化；`Sprint 46` 已完成最小 phase flow state 与 phase router；`Sprint 47` 已完成 phase-aware tool guardrail；`Sprint 48` 已完成 phase 可观测性、评估闭环与权威设计回写。`plan-v2` 的主线能力已落地，剩余差距主要集中在更高阶的生产运营与企业化能力。
 
 ## 一句话判断
 
@@ -28,6 +28,19 @@
 - `Sprint 33` 已完成 tool registry、tool runtime、tool envelope 与主链路解耦
 - `Sprint 34` 已完成 Responses-first 分层、stateful/stateless 说明与官方 Skills 对齐文档
 - `Sprint 35` 已完成 Prompt 指南到运行时 prompt、Responses contract 与手测检查项的闭环
+- `Sprint 36` 已完成人格层补齐、`phase` 纪律、输出前验证闸门与 `prompt_review` 审查信号
+- `Sprint 37` 已完成会话级状态 / timeline 聚合分析视图
+- `Sprint 38` 已完成跨 skill 冷却降权与最小排序解释
+- `Sprint 39` 已完成 retrieval backend 抽象与 local fallback
+- `Sprint 40` 已完成 OTel 导出配置边界与启停策略
+- `Sprint 41` 已完成密文版本前缀与历史密文兼容解密
+- `Sprint 42` 已完成四阶段咨询纪律补强与单轮四步回复微结构约束
+- `Sprint 43` 已完成积极情绪首触发 skill 路由与正向体验巩固 skill 接入
+- `Sprint 44` 已完成 `active_skill` 锁定与受控退出
+- `Sprint 45` 已完成主 Agent + 四阶段子 Agent profile 的最小落地
+- `Sprint 46` 已完成最小 phase flow state 与 phase router
+- `Sprint 47` 已完成 phase-aware tool runtime 守门
+- `Sprint 48` 已完成 phase trace、评估闭环与权威设计文档回写
 
 ## Sprint 总表
 
@@ -68,6 +81,19 @@
 | 33 | Tool 运行时平台化与契约统一 | ✅ PASSED | tool registry、tool runtime、统一 envelope、同回合 runtime state |
 | 34 | Responses-first 会话状态与官方 Skills 对齐 | ✅ PASSED | runtime contract、stateful/stateless、技能架构对齐 |
 | 35 | 心雀 Prompt 指南落地 | ✅ PASSED | Prompt 指南 -> 运行时 Prompt -> 测试 / 手测检查项闭环 |
+| 36 | Prompt 体系升级与评估闭环深化 | ✅ PASSED | 人格层补齐、`phase` 纪律、空结果恢复、输出前验证闸门、judge `prompt_review` |
+| 37 | 状态时间线聚合与运营分析 | ✅ PASSED | 会话级分析载荷、最新 focus、phase counts、关键状态变化 |
+| 38 | 主题连续性重排与跨 Skill 冷却治理 | ✅ PASSED | 同 skill / 同类别 / `unhelpful` 降权，`continuity_reason` 与 `cooling_reasons` |
+| 39 | 外部向量索引抽象与检索升级 | ✅ PASSED | retrieval backend 抽象、local backend 默认 / fallback、search_memory 解耦 |
+| 40 | 生产级可观测平台接入 | ✅ PASSED | OTel 导出开关、endpoint 配置、禁用 / 本地回退路径 |
+| 41 | 企业级密钥轮换与租户权限基线 | ✅ PASSED | 密文版本前缀、版本配置读取、旧格式密文兼容解密 |
+| 42 | 咨询阶段纪律与四步回复微结构 | ✅ PASSED | P1-P4 禁止抢跑、四步微结构、judge 新评估信号 |
+| 43 | 积极情绪首触发 Skill 路由 | ✅ PASSED | 正向体验 skill、受控直达路由、负面主导阻断 |
+| 44 | Skill 执行锁定与主动流程控制 | ✅ PASSED | `active_skill` 持久化、跨轮可见、运行时守门、受控退出 |
+| 45 | 主 Agent 与四阶段子 Agent Profile 化 | ✅ PASSED | `active_phase`、phase profiles、phase-aware prompt 注入 |
+| 46 | Flow-State 变量与 Phase 路由 | ✅ PASSED | 最小 flow state、phase router、phase transition reason |
+| 47 | Phase-aware Tool Guardrail 与运行时收口 | ✅ PASSED | phase-aware preflight、blocked payload、P4 优先守门 |
+| 48 | Phase 可观测性评估闭环与权威设计回写 | ✅ PASSED | phase trace、评估闭环、设计真相源同步 |
 
 ## 与 plan-v2 的能力对齐
 
@@ -95,6 +121,7 @@
 | 用户侧情绪趋势 | 已实现增强版 | [mood_trend_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/mood_trend_helpers.py)、[moodTrend.ts](/E:/AI_XinQue_Agent/app/frontend/src/components/chat/moodTrend.ts) |
 | 管理侧匿名统计 | 已实现最小版 | [admin_metrics_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/admin_metrics_helpers.py)、[AdminDashboard.tsx](/E:/AI_XinQue_Agent/app/frontend/src/components/admin/AdminDashboard.tsx) |
 | 应用层字段加密 | 已实现 | [encryption_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/encryption_helpers.py) |
+| 应用层加密版本化边界 | 已实现最小版本 | [encryption_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/encryption_helpers.py)、[settings.py](/E:/AI_XinQue_Agent/app/backend/app/settings.py) |
 | GPT-5.4 Prompt 约束治理 | 已部分实现 | [AGENTS.md](/E:/AI_XinQue_Agent/AGENTS.md)、[CLAUDE.md](/E:/AI_XinQue_Agent/CLAUDE.md)、[system_prompt.py](/E:/AI_XinQue_Agent/app/backend/app/agent/system_prompt.py) |
 | Tool 前置约束与高影响动作 guardrail | 已部分实现 | [xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py)、[test_xinque_guardrails.py](/E:/AI_XinQue_Agent/app/backend/tests/test_xinque_guardrails.py) |
 | Responses API 协议层 | 已部分实现 | [xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py)、[responses_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/responses_helpers.py) |
@@ -103,6 +130,7 @@
 | 独立会话状态模型 | 已实现 | [tables.py](/E:/AI_XinQue_Agent/app/backend/app/models/tables.py)、[session_state_store.py](/E:/AI_XinQue_Agent/app/backend/app/session_state_store.py)、[main.py](/E:/AI_XinQue_Agent/app/backend/app/main.py) |
 | 会话状态版本历史 | 已实现首轮版本 | [tables.py](/E:/AI_XinQue_Agent/app/backend/app/models/tables.py)、[session_state_store.py](/E:/AI_XinQue_Agent/app/backend/app/session_state_store.py) |
 | 会话状态读取接口 | 已实现 | [main.py](/E:/AI_XinQue_Agent/app/backend/app/main.py)、[session_state_store.py](/E:/AI_XinQue_Agent/app/backend/app/session_state_store.py)、[trace_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/trace_helpers.py) |
+| 会话级状态 / timeline 聚合分析视图 | 已实现最小版本 | [main.py](/E:/AI_XinQue_Agent/app/backend/app/main.py)、[trace_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/trace_helpers.py) |
 | 时间感知上下文 | 已实现最小版本 | [time_context.py](/E:/AI_XinQue_Agent/app/backend/app/time_context.py)、[recall_context.py](/E:/AI_XinQue_Agent/app/backend/app/agent/tools/recall_context.py)、[session_context.py](/E:/AI_XinQue_Agent/app/backend/app/session_context.py) |
 | 时间新鲜度驱动的 prompt / Tool 路由 | 已实现最小版本 | [xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py)、[system_prompt.py](/E:/AI_XinQue_Agent/app/backend/app/agent/system_prompt.py) |
 | 时间新鲜度排序与多干预优先级 | 已实现最小版本 | [time_freshness.py](/E:/AI_XinQue_Agent/app/backend/app/time_freshness.py)、[search_memory.py](/E:/AI_XinQue_Agent/app/backend/app/agent/tools/search_memory.py)、[match_intervention.py](/E:/AI_XinQue_Agent/app/backend/app/agent/tools/match_intervention.py) |
@@ -110,9 +138,14 @@
 | 前端多入口应用壳层 | 已实现最小版本 | [App.tsx](/E:/AI_XinQue_Agent/app/frontend/src/App.tsx)、[HistoryPage.tsx](/E:/AI_XinQue_Agent/app/frontend/src/pages/HistoryPage.tsx)、[ChatWindow.tsx](/E:/AI_XinQue_Agent/app/frontend/src/components/chat/ChatWindow.tsx) |
 | Responses 协议守门一致性 | 已实现增强版本 | [xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py)、[responses_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/responses_helpers.py)、[evaluation_helpers.py](/E:/AI_XinQue_Agent/app/backend/app/evaluation_helpers.py)、[settings.py](/E:/AI_XinQue_Agent/app/backend/app/settings.py) |
 | Skill manifest v2 与注册表 | 已实现首轮版本 | [skill_manifest.py](/E:/AI_XinQue_Agent/app/backend/app/skill_manifest.py)、[skill_registry.py](/E:/AI_XinQue_Agent/app/backend/app/skill_registry.py)、[load_skill.py](/E:/AI_XinQue_Agent/app/backend/app/agent/tools/load_skill.py)、[match_intervention.py](/E:/AI_XinQue_Agent/app/backend/app/agent/tools/match_intervention.py) |
+| 积极情绪首触发 skill 路由 | 已实现最小版本 | [positive_experience_consolidation.skill.md](/E:/AI_XinQue_Agent/app/skills/positive_psychology/positive_experience_consolidation.skill.md)、[tool_runtime.py](/E:/AI_XinQue_Agent/app/backend/app/tool_runtime.py)、[system_prompt.py](/E:/AI_XinQue_Agent/app/backend/app/agent/system_prompt.py) |
 | Tool 运行时平台化 | 已实现首轮版本 | [tool_registry.py](/E:/AI_XinQue_Agent/app/backend/app/tool_registry.py)、[tool_runtime.py](/E:/AI_XinQue_Agent/app/backend/app/tool_runtime.py)、[tool_contracts.py](/E:/AI_XinQue_Agent/app/backend/app/tool_contracts.py)、[xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py) |
 | Responses-first 会话契约与 Skills 对齐 | 已实现首轮版本 | [responses_contract.py](/E:/AI_XinQue_Agent/app/backend/app/responses_contract.py)、[responses-tools-skills-architecture.md](/E:/AI_XinQue_Agent/docs/design/responses-tools-skills-architecture.md)、[README.md](/E:/AI_XinQue_Agent/app/backend/README.md)、[xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py) |
 | Prompt 指南到运行时闭环 | 已实现首轮版本 | [05-心雀Prompt撰写指南-v1.md](/E:/AI_XinQue_Agent/docs/design/05-心雀Prompt撰写指南-v1.md)、[system_prompt.py](/E:/AI_XinQue_Agent/app/backend/app/agent/system_prompt.py)、[responses_contract.py](/E:/AI_XinQue_Agent/app/backend/app/responses_contract.py)、[manual-test-checklist-v1.md](/E:/AI_XinQue_Agent/docs/testing/manual-test-checklist-v1.md) |
+| `active_skill` 锁定与主动流程控制 | 已实现 | [tool_runtime.py](/E:/AI_XinQue_Agent/app/backend/app/tool_runtime.py)、[responses_contract.py](/E:/AI_XinQue_Agent/app/backend/app/responses_contract.py)、[session_context.py](/E:/AI_XinQue_Agent/app/backend/app/session_context.py) |
+| 主 Agent + 四阶段子 Agent profile | 已实现最小版本 | [phase_profiles.py](/E:/AI_XinQue_Agent/app/backend/app/agent/phase_profiles.py)、[system_prompt.py](/E:/AI_XinQue_Agent/app/backend/app/agent/system_prompt.py)、[xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py) |
+| 最小 phase flow state 与 phase router | 已实现最小版本 | [phase_state.py](/E:/AI_XinQue_Agent/app/backend/app/agent/phase_state.py)、[phase_router.py](/E:/AI_XinQue_Agent/app/backend/app/agent/phase_router.py)、[session_context.py](/E:/AI_XinQue_Agent/app/backend/app/session_context.py) |
+| Phase-aware tool runtime | 已实现最小版本 | [tool_runtime.py](/E:/AI_XinQue_Agent/app/backend/app/tool_runtime.py)、[xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py)、[responses_contract.py](/E:/AI_XinQue_Agent/app/backend/app/responses_contract.py) |
 
 ## 当前代码与 plan-v2 的主要偏差
 
@@ -133,6 +166,7 @@
 - episodic memory 脱敏
 - 评估 sample 脱敏
 - 消息 / summary / memory 应用层加密
+- 密文字段版本前缀与历史兼容读取
 
 仍未完成：
 
@@ -193,8 +227,7 @@
 1. 完整 observability 平台
 2. 更强的外部向量检索
 3. 企业级密钥与权限体系
-4. 状态查询的分页/过滤与运营消费层
-5. 更细粒度的 phase/state timeline 查询与聚合
+4. 更细粒度的 phase/state timeline 聚合与运营分析
 6. 更强的主题连续性重排与跨 skill 冷却策略
 
 ## Claude Code 复审补充
@@ -333,7 +366,7 @@
 - 当前实现整体质量高
 - 架构基本遵循 `plan-v2`
 - 安全层和可观测性完成度较高
-- 现在最值得优先补的是更强的主题连续性重排、状态查询的分页/过滤、timeline 聚合分析、生产级观测平台和企业级安全体系
+- 会话状态历史与 timeline 读取接口已补齐最小分页 / 过滤 / continuation meta，后续重点转向 timeline 聚合分析、主题连续性重排、生产级观测平台和企业级安全体系
 
 如果后续要继续开新 sprint，建议优先级如下：
 
@@ -349,11 +382,11 @@
 
 1. 新增或调整 sprint 时，更新这里的“能力对齐”表
 2. 完成评估后，更新这里的“状态”与“偏差”
-3. 若 `product-plan-v2.md` 出现架构变更，优先更新这里，再决定是否重写 sprint 文档
+3. 若 `product-plan-v2.1.md` 出现架构变更，优先更新这里，再决定是否重写 sprint 文档
 
 ## 参考文件
 
-- [product-plan-v2.md](/E:/AI_XinQue_Agent/docs/design/product-plan-v2.md)
+- [product-plan-v2.1.md](./product-plan-v2.1.md)
 - [main.py](/E:/AI_XinQue_Agent/app/backend/app/main.py)
 - [xinque.py](/E:/AI_XinQue_Agent/app/backend/app/agent/xinque.py)
 - [ChatWindow.tsx](/E:/AI_XinQue_Agent/app/frontend/src/components/chat/ChatWindow.tsx)

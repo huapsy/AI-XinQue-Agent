@@ -15,9 +15,56 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app.agent import xinque
 from app.models.tables import CaseFormulation, Intervention
+from app.tool_runtime import resolve_active_skill_state
 
 
 class XinqueGuardrailTests(unittest.TestCase):
+    def test_match_intervention_is_blocked_in_p1_listener_phase(self) -> None:
+        formulation = CaseFormulation(
+            session_id="session-1",
+            user_id="user-1",
+            readiness="sufficient",
+            missing=[],
+        )
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: formulation))
+
+        raw = __import__("asyncio").run(
+            xinque._preflight_tool_call(
+                tool_name="match_intervention",
+                arguments={},
+                user_id="user-1",
+                session_id="session-1",
+                user_message="我最近总在开会前发慌",
+                messages=[],
+                db=db,
+                active_phase="p1_listener",
+            )
+        )
+        payload = json.loads(raw)
+
+        self.assertEqual(payload["status"], "blocked")
+        self.assertEqual(payload["reason"], "phase_tool_not_allowed")
+        self.assertEqual(payload["active_phase"], "p1_listener")
+
+    def test_formulate_is_allowed_in_p2_explorer_phase(self) -> None:
+        db = AsyncMock()
+
+        result = __import__("asyncio").run(
+            xinque._preflight_tool_call(
+                tool_name="formulate",
+                arguments={"primary_issue": "周会前焦虑"},
+                user_id="user-1",
+                session_id="session-1",
+                user_message="每次周会前我都很紧绷",
+                messages=[],
+                db=db,
+                active_phase="p2_explorer",
+            )
+        )
+
+        self.assertIsNone(result)
+
     def test_match_intervention_is_blocked_when_formulation_is_missing(self) -> None:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None))
@@ -182,6 +229,7 @@ class XinqueGuardrailTests(unittest.TestCase):
                 user_message="我刚做完，感觉缓下来一点",
                 messages=[],
                 db=db,
+                active_phase="p4_interventor",
             )
         )
 
@@ -371,6 +419,133 @@ class XinqueGuardrailTests(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+    def test_load_skill_allows_positive_experience_consolidation_on_positive_sentiment_start(self) -> None:
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None))
+
+        result = __import__("asyncio").run(
+            xinque._preflight_tool_call(
+                tool_name="load_skill",
+                arguments={"skill_name": "positive_experience_consolidation"},
+                user_id="user-1",
+                session_id="session-1",
+                user_message="我今天真的很开心，感觉自己做成了一件大事",
+                messages=[],
+                db=db,
+            )
+        )
+
+        self.assertIsNone(result)
+
+    def test_load_skill_blocks_positive_experience_consolidation_when_negative_emotion_is_dominant(self) -> None:
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None))
+
+        raw = __import__("asyncio").run(
+            xinque._preflight_tool_call(
+                tool_name="load_skill",
+                arguments={"skill_name": "positive_experience_consolidation"},
+                user_id="user-1",
+                session_id="session-1",
+                user_message="我其实还是很焦虑，只是刚刚有一瞬间有点开心",
+                messages=[],
+                db=db,
+            )
+        )
+        payload = json.loads(raw)
+
+        self.assertEqual(payload["status"], "blocked")
+        self.assertEqual(payload["tool"], "load_skill")
+        self.assertEqual(payload["reason"], "positive_sentiment_not_clear")
+
+    def test_match_intervention_is_blocked_when_active_skill_is_still_in_progress(self) -> None:
+        formulation = CaseFormulation(
+            session_id="session-1",
+            user_id="user-1",
+            readiness="sufficient",
+            missing=[],
+        )
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: formulation))
+
+        raw = __import__("asyncio").run(
+            xinque._preflight_tool_call(
+                tool_name="match_intervention",
+                arguments={},
+                user_id="user-1",
+                session_id="session-1",
+                user_message="嗯，我继续说",
+                messages=[],
+                db=db,
+                active_skill={"skill_name": "positive_experience_consolidation"},
+            )
+        )
+        payload = json.loads(raw)
+
+        self.assertEqual(payload["status"], "blocked")
+        self.assertEqual(payload["reason"], "active_skill_in_progress")
+
+    def test_load_skill_is_blocked_when_another_active_skill_is_still_in_progress(self) -> None:
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None))
+
+        raw = __import__("asyncio").run(
+            xinque._preflight_tool_call(
+                tool_name="load_skill",
+                arguments={"skill_name": "breathing_478"},
+                user_id="user-1",
+                session_id="session-1",
+                user_message="开始吧",
+                messages=[],
+                db=db,
+                active_skill={"skill_name": "positive_experience_consolidation"},
+            )
+        )
+        payload = json.loads(raw)
+
+        self.assertEqual(payload["status"], "blocked")
+        self.assertEqual(payload["reason"], "active_skill_in_progress")
+
+    def test_match_intervention_is_allowed_when_user_explicitly_wants_to_switch_method_during_active_skill(self) -> None:
+        formulation = CaseFormulation(
+            session_id="session-1",
+            user_id="user-1",
+            readiness="sufficient",
+            missing=[],
+        )
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: formulation))
+
+        result = __import__("asyncio").run(
+            xinque._preflight_tool_call(
+                tool_name="match_intervention",
+                arguments={},
+                user_id="user-1",
+                session_id="session-1",
+                user_message="这个方法不太适合我，换一个吧",
+                messages=[],
+                db=db,
+                active_skill={"skill_name": "positive_experience_consolidation"},
+            )
+        )
+
+        self.assertIsNone(result)
+
+    def test_resolve_active_skill_state_clears_skill_after_record_outcome(self) -> None:
+        active_skill = {"skill_name": "positive_experience_consolidation"}
+        tool_state = [
+            {
+                "tool": "record_outcome",
+                "status": "ok",
+                "arguments": {"skill_name": "positive_experience_consolidation", "completed": True},
+                "payload": {"intervention_id": "iv-1"},
+            }
+        ]
+
+        resolved = resolve_active_skill_state(active_skill, tool_state, user_message="我做完了")
+
+        self.assertEqual(resolved, {})
 
 
 if __name__ == "__main__":

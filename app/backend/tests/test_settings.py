@@ -6,7 +6,13 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from app.settings import get_cors_origins, get_responses_store_enabled
+from app.settings import (
+    get_cors_origins,
+    get_encryption_key_version,
+    get_otel_enabled,
+    get_otel_exporter_endpoint,
+    get_responses_store_enabled,
+)
 
 
 class SettingsTests(unittest.TestCase):
@@ -36,6 +42,22 @@ class SettingsTests(unittest.TestCase):
             with self.subTest(value=value):
                 with patch.dict(os.environ, {"XINQUE_RESPONSES_STORE": value}, clear=False):
                     self.assertFalse(get_responses_store_enabled())
+
+    def test_get_otel_enabled_defaults_false(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(get_otel_enabled())
+
+    def test_get_otel_exporter_endpoint_reads_env(self) -> None:
+        with patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318"}, clear=False):
+            self.assertEqual(get_otel_exporter_endpoint(), "http://collector:4318")
+
+    def test_get_encryption_key_version_defaults_v1(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(get_encryption_key_version(), "v1")
+
+    def test_get_encryption_key_version_reads_env(self) -> None:
+        with patch.dict(os.environ, {"XINQUE_ENCRYPTION_KEY_VERSION": "v3"}, clear=False):
+            self.assertEqual(get_encryption_key_version(), "v3")
 
 
 if __name__ == "__main__":

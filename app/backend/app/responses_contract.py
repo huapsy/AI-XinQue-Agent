@@ -14,14 +14,31 @@ RUNTIME_LAYER_DEFINITIONS = {
 }
 
 
-def build_working_contract_message(alignment_score: int | None, turn_number: int) -> str:
+def build_working_contract_message(
+    alignment_score: int | None,
+    turn_number: int,
+    active_phase: str | None = None,
+    active_skill: dict | None = None,
+) -> str:
     """构造跨轮仍需可见的最小契约。"""
     lines = [
+        "人格摘要：你是心雀，一位专业但亲切的心理支持助手；保持专业、温和、自然的表达，不生硬、说教或教程化。",
         "最小系统契约：保持自然中文；遵守安全边界；不要越级推进；工具调用必须满足前置条件。",
         "回复风格：默认自然 prose，不使用列表、编号或文档腔；句子普遍较短，认知负担低。",
-        "推进方式：默认探索驱动，而不是建议驱动；尤其在负向 flow 中优先接住、正常化、收束到更具体的问题点，再问一个具体问题。",
+        "阶段纪律：P1 不做表单式分流；P2 先探索和形成理解，不抢跑到建议或干预；P3/P4 只在前提满足时进入。",
+        "Flow Controller 语义：每轮都要维护最小阶段字段，包括 intent、explore、asking、formulation_confirmed、needs_more_exploration、chosen_intervention、intervention_complete。",
+        "推进方式：默认探索驱动，而不是建议驱动；尤其在负向 flow 中优先按接住、正常化、缩小问题、一个具体问题来推进。",
+        "回复骨架：默认每轮只问一个具体问题，不用分类选项、多入口并列问题或表单式分流替代咨询式推进。",
         "表达要求：所有总结、归因、机制判断都按工作性假设表达，不写成确定事实或诊断式结论。",
+        "phase 纪律：区分中间 commentary、tool 过渡和 final answer，不要把中间状态当成最终用户可见回复。",
+        "验证要求：输出前验证当前依赖、用户同意与安全边界；空结果或低置信度时先恢复，不要直接下结论。",
     ]
+    if active_phase:
+        lines.append(f"当前 active phase={active_phase}：本轮优先遵守该阶段子Agent的行为边界。")
+    if active_skill and active_skill.get("skill_name"):
+        lines.append(
+            f"当前 active skill={active_skill['skill_name']}：未完成前优先继续当前 skill，除非用户明确拒绝、要求切换方法，或危机接管。"
+        )
     if turn_number <= 2:
         lines.append("回合纪律：当前仍属早期轮次，优先建立理解与上下文，不要过早推荐干预。")
     if turn_number >= 6:
@@ -47,13 +64,20 @@ def build_runtime_input(
     turn_number: int,
     previous_response_id: str | None,
     store_enabled: bool,
+    active_phase: str | None = None,
+    active_skill: dict | None = None,
 ) -> tuple[list[dict], str | None]:
     """根据 store/previous_response_id 构造本轮 Responses 输入。"""
     if should_use_stateful_responses(store_enabled, previous_response_id):
         return [
             make_response_message(
                 "assistant",
-                build_working_contract_message(alignment_score, turn_number),
+                build_working_contract_message(
+                    alignment_score,
+                    turn_number,
+                    active_phase=active_phase,
+                    active_skill=active_skill,
+                ),
                 phase="commentary",
             ),
             make_response_message("assistant", effective_history[0]["content"], phase="commentary"),

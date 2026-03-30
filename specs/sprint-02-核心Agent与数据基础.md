@@ -8,7 +8,7 @@
 
 Sprint 01 已验收通过：前后端联通，能收发消息。但当前后端只是把用户消息直接转发给 Azure OpenAI，没有人设、没有会话管理、没有数据持久化。
 
-v2 架构（见 `docs/design/product-plan-v2.md`）要求：
+v2 / v2.1 架构（见 `docs/design/product-plan-v2.1.md`，v2 存档见 `product-plan-v2.md`）要求：
 - 单一核心 LLM + Tool Use 自主推理循环
 - System Prompt 注入心雀人设、安全红线、对话阶段指南
 - 会话和消息持久化到数据库

@@ -5,6 +5,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -12,6 +13,36 @@ from app.agent.tools import search_memory
 
 
 class SearchMemoryToolTests(unittest.TestCase):
+    def test_search_memory_uses_retrieval_backend_entrypoint(self) -> None:
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: [
+                SimpleNamespace(
+                    content="妈妈上周住院了，我很担心。",
+                    topic="family_health",
+                    emotions=["担忧"],
+                    created_at=None,
+                    embedding=[],
+                ),
+            ])
+        ))
+
+        with patch("app.agent.tools.search_memory.retrieve_memories", return_value=[{
+            "content": "妈妈上周住院了，我很担心。",
+            "topic": "family_health",
+            "emotions": ["担忧"],
+            "created_at": None,
+        }]) as retrieve_mock:
+            raw = __import__("asyncio").run(search_memory.execute(
+                "user-1",
+                {"query": "妈妈住院", "top_k": 2},
+                db,
+            ))
+
+        payload = json.loads(raw)
+        self.assertEqual(payload["results"][0]["topic"], "family_health")
+        retrieve_mock.assert_called()
+
     def test_search_memory_returns_ranked_matches(self) -> None:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=SimpleNamespace(

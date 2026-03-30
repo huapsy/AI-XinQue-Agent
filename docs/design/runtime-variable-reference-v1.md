@@ -254,6 +254,13 @@
 | `user_feedback` | 用户反馈 |
 | `key_insight` | 关键洞察 |
 
+#### `active_phase`
+
+| 字段名 | 含义 |
+|---|---|
+| `active_phase` | 当前主导阶段子 agent：`p1_listener / p2_explorer / p3_recommender / p4_interventor` |
+| `phase_transition_reason` | 当前进入该阶段的最小路由原因 |
+
 #### `last_session_summary`
 
 | 字段名 | 含义 |
@@ -276,6 +283,22 @@
 8. `runtime_time_context`
 
 也就是说，模型看到的不是原始数据库表，而是这些字段整理后的上下文卡片。
+
+### 6.1 Phase Flow State（v2.2 最小版）
+
+当前主 agent + 四阶段子 agent profile 架构的最小 flow state 变量包括：
+
+| 字段名 | 含义 |
+|---|---|
+| `active_phase` | 当前主导阶段 |
+| `intent` | 用户是否明确表达想直接进入方法/练习 |
+| `explore` | 当前是否应推进到探索与概念化 |
+| `asking` | 当前正在补哪类探索槽位 |
+| `formulation_confirmed` | 当前理解是否已足够进入推荐 |
+| `needs_more_exploration` | 推荐前是否仍需补信息 |
+| `chosen_intervention` | 当前已锁定的候选干预 |
+| `intervention_complete` | 当前干预是否已完成 |
+| `active_skill` | 当前是否已有执行中的 skill |
 
 ---
 
